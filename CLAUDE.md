@@ -10,7 +10,7 @@ FireShot相当のフルページSSツールを **Windows単体exe**（Python + P
 ## 現在のPHASE
 - PHASE 1（撮影エンジン＋自動検証ハーネス）完了。15件×9判定PASS（`test/REPORT.md`）。
 - PHASE 2（フローティングUI / PNG・PDF出力 / 保存処理 / exe化）完了。完了条件1〜8 PASS。exe自己テスト（`PATTI_SHOT_SELFTEST=<url>`）で実Chrome起動→撮影→PNG/PDF保存まで実証。
-- **PHASE 3（自動更新 / release.bat / 配布ページ / 棚トップ更新）完了・池本確認待ち。** v4.0.1公開済み（https://github.com/ikemotodir/patti-shot/releases ）。配布ページ https://ikemotodir.github.io/patti-shot/ 稼働・棚トップのカードも「公開中」化済み。配布ページは`docs/`（GitHub Pagesの制約でspecの`site/`は`docs/`に読み替え）。
+- **PHASE 3（自動更新 / release.bat / 配布ページ / 棚トップ更新）完了・池本確認待ち。** v4.1.1公開済み（https://github.com/ikemotodir/patti-shot/releases ・自動更新の再起動まで成立）。配布ページ https://ikemotodir.github.io/patti-shot/ 稼働・棚トップのカードも「公開中」化済み。配布ページは`docs/`（GitHub Pagesの制約でspecの`site/`は`docs/`に読み替え）。
 
 ## PHASE 3の要点・ハマりどころ
 - **SSL**: Python3.13+の`VERIFY_X509_STRICT`が、セキュリティソフトのHTTPS検査CA（basicConstraints非critical）を拒否→更新チェックが黙って失敗する。`update._ssl_context()`でstrictのみ解除（チェーン検証は維持）。v4.0.0はこの修正前のexeだったためリリース削除→v4.0.1で置換済み。
@@ -18,12 +18,13 @@ FireShot相当のフルページSSツールを **Windows単体exe**（Python + P
 - **Avast（このPC）**: 池本が`build\dist\PATTI_SHOT.exe`を**ファイル例外**登録済み。ただし例外は**ファイル単位で、置き換え直後の“新しく書かれたexe”の起動は一時的に遮断される**（実時間スキャン）。数十秒後や内容不変なら起動可。→ **推奨は「フォルダ例外」**（build\dist配下やDownloads\PATTI SHOTごと）にして置き換え後も許可されるようにすること。
 - gh CLIは導入済み・`ikemotodir`で認証済み。release.batはv4.0.1/v4.1.0を全自動公開済み（重複タグ拒否ガード付き）。
 
-## 自動更新（条件9）実戦検証の結論（2026-07-23）
-実物 v4.0.1 → v4.1.0 でE2E検証（`test/test_update_e2e_live.py`、Avast許可パス`build\dist\PATTI_SHOT.exe`上で実施）。安全装置は`test/test_update_safety.py`、UIは`test/test_update_ui.py`。
-- **検知/DL/サイズ・ハッシュ/置き換え/更新後の撮影/ログイン(Cookie)維持/後始末/多重起動なし/最新版で誤検知なし= すべてPASS。**
-- **自動再起動の根本原因を特定**：`start "" %1`自体は正しく再起動する（分離テストでPASS）。問題は**Avastが“置き換え直後のexe”の起動をスキャン中に遮断**すること。→ updater.batに**再起動前ウェイト`ping -n 8`（約7秒）を追加**（`update._UPDATER_BAT`）。この遅延で**遮断が解消（0秒=遮断、8秒/20秒=起動OK）を実測**。
-- **注意（重要）**：この遅延は**新しいexe側のupdate.pyが書くbat**で効く。よって既存配布の v4.0.1 / v4.1.0（遅延追加前ビルド）は、更新自体は成功するが**再起動だけAvastに一時遮断される**（利用者はexeをもう一度開けば新版。中身は更新済み）。**次リリース以降**は自動再起動もAvast上で成立する見込み（実測ベース）。フォルダ例外にすればより確実。
-- 池本のPCが更新テストの起点にできるのは`build\dist\PATTI_SHOT.exe`のみ（他パス/TEMPはAvast遮断）。
+## 自動更新（条件9）実戦検証の結論（2026-07-23・**全10項目PASS / v4.1.1で解消**）
+検証：`test/test_update_e2e_live.py`（実GitHubからDL）、`test/test_update_safety.py`（安全装置5種）、`test/test_update_ui.py`（UI）、`scratchpad/real_relaunch.ps1`（実ユーザー相当のダブルクリック起動→更新→再起動の通し）。すべてAvast許可パス`build\dist\PATTI_SHOT.exe`上で実施。
+- 10項目（検知/DL・ハッシュ/置換/**再起動**/版数表示/**ログイン維持**/撮影/後始末/多重起動なし/最新版で誤検知なし）= **すべてPASS**。安全装置5種・UIも全PASS。
+- **再起動が動かなかった真因（重要・PyInstaller固有）**：再起動された新exeが、旧exe（＝PyInstaller onefile）の**ブートローダ環境変数`_MEIPASS2`/`_PYI_*`を継承**し、親の**既に削除された`_MEI`一時展開フォルダ**を探して**無言で起動失敗**していた（＝一見「何も起きない」）。`start`自体は正常。→ `spawn_updater`で**再起動プロセスにクリーンな環境を渡す**（`PATTI_SHOT_*`＝テストモード継承防止、`_MEI*`/`_PYI*`＝ブートローダ汚染防止）よう修正。起動直後に必ず`update.log_boot()`で1行記録するようにして検証を確実化。
+- 併せて：AVスキャン対策の**再起動前ウェイト`ping -n 8`**（Avastは置換直後exeを一瞬遮断／**フォルダ例外**＋この遅延で解消を実測）。**relaunchは`start "" "%~1"`**（`explorer.exe`はデタッチ状態から起動しないことを実測）。
+- **v4.1.1で本修正を公開済み**（release.batで自動）。**注意**：この修正は「新版側のupdate.py」で効くため、**旧配布の v4.0.1 / v4.1.0 → 新版**の初回更新だけは自動再起動しない（更新自体は成功・利用者がexeを開き直せば新版）。**v4.1.1以降どうしからの更新は自動再起動まで成立**（実測）。
+- 池本のPCで更新テストの起点にできるのは`build\dist\PATTI_SHOT.exe`のみ（他パス/TEMPはAvast遮断）。フォルダ例外登録済み。
 
 ## PHASE 2の要点・ハマりどころ
 - UI⇔Python連携は**binding不可**（sync Playwrightはbindingハンドラ内で長時間のネスト呼び出しができずデッドロック）。→ FABは`<html>`属性`data-patti-shot-request`に要求を書き、`app.run`のポーリングループが撮影を実行して`data-patti-shot-result`で返す方式。進捗は`document.title`（撮影に写らない）で表示。
