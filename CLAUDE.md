@@ -15,8 +15,15 @@ FireShot相当のフルページSSツールを **Windows単体exe**（Python + P
 ## PHASE 3の要点・ハマりどころ
 - **SSL**: Python3.13+の`VERIFY_X509_STRICT`が、セキュリティソフトのHTTPS検査CA（basicConstraints非critical）を拒否→更新チェックが黙って失敗する。`update._ssl_context()`でstrictのみ解除（チェーン検証は維持）。v4.0.0はこの修正前のexeだったためリリース削除→v4.0.1で置換済み。
 - **updater.bat**: `timeout.exe`はコンソール無しプロセスで即エラーになる（リトライが一瞬で溶ける）→ `ping -n 2`で待機。DLファイルのAVスキャンロック対策でdelもリトライ。パスは引数渡し（bat本体はASCII維持）。ユニーク名で生成。
-- **Avast（このPC）**: 何度か起動テストを繰り返すうち、Avastが**あらゆるPATTI_SHOT.exeの起動を「Access is denied」で遮断**するようになった（ハッシュ同一のローカルビルドも遮断）。§11の想定リスクが現実化した形。**池本のAvast例外登録が必要**（設定→例外→`PATTI_SHOT.exe`または`Downloads\PATTI SHOT`と`build\dist`を追加）。条件9の「再起動」検証はこの遮断のため未完（置き換えまでは実exe+実リリースで検証済み）。
-- gh CLIは導入済み・`ikemotodir`で認証済み。release.batは実際にv4.0.1を全自動公開済み（重複タグは拒否するガード付き）。
+- **Avast（このPC）**: 池本が`build\dist\PATTI_SHOT.exe`を**ファイル例外**登録済み。ただし例外は**ファイル単位で、置き換え直後の“新しく書かれたexe”の起動は一時的に遮断される**（実時間スキャン）。数十秒後や内容不変なら起動可。→ **推奨は「フォルダ例外」**（build\dist配下やDownloads\PATTI SHOTごと）にして置き換え後も許可されるようにすること。
+- gh CLIは導入済み・`ikemotodir`で認証済み。release.batはv4.0.1/v4.1.0を全自動公開済み（重複タグ拒否ガード付き）。
+
+## 自動更新（条件9）実戦検証の結論（2026-07-23）
+実物 v4.0.1 → v4.1.0 でE2E検証（`test/test_update_e2e_live.py`、Avast許可パス`build\dist\PATTI_SHOT.exe`上で実施）。安全装置は`test/test_update_safety.py`、UIは`test/test_update_ui.py`。
+- **検知/DL/サイズ・ハッシュ/置き換え/更新後の撮影/ログイン(Cookie)維持/後始末/多重起動なし/最新版で誤検知なし= すべてPASS。**
+- **自動再起動の根本原因を特定**：`start "" %1`自体は正しく再起動する（分離テストでPASS）。問題は**Avastが“置き換え直後のexe”の起動をスキャン中に遮断**すること。→ updater.batに**再起動前ウェイト`ping -n 8`（約7秒）を追加**（`update._UPDATER_BAT`）。この遅延で**遮断が解消（0秒=遮断、8秒/20秒=起動OK）を実測**。
+- **注意（重要）**：この遅延は**新しいexe側のupdate.pyが書くbat**で効く。よって既存配布の v4.0.1 / v4.1.0（遅延追加前ビルド）は、更新自体は成功するが**再起動だけAvastに一時遮断される**（利用者はexeをもう一度開けば新版。中身は更新済み）。**次リリース以降**は自動再起動もAvast上で成立する見込み（実測ベース）。フォルダ例外にすればより確実。
+- 池本のPCが更新テストの起点にできるのは`build\dist\PATTI_SHOT.exe`のみ（他パス/TEMPはAvast遮断）。
 
 ## PHASE 2の要点・ハマりどころ
 - UI⇔Python連携は**binding不可**（sync Playwrightはbindingハンドラ内で長時間のネスト呼び出しができずデッドロック）。→ FABは`<html>`属性`data-patti-shot-request`に要求を書き、`app.run`のポーリングループが撮影を実行して`data-patti-shot-result`で返す方式。進捗は`document.title`（撮影に写らない）で表示。
@@ -62,4 +69,4 @@ set PATTI_SHOT_SELFTEST=https://example.com/ && set PATTI_SHOT_OUT_DIR=%TEMP%\st
 ## 次にやること
 - 池本：Avastの例外登録（上記）→ 実機でexeダブルクリック→撮影→（次回リリース時）更新ボタンの体感確認。
 - 次リリースの手順：`__version__`を上げて`release.bat`をダブルクリックするだけ。
-- 残・未検証：条件9の「再起動」工程（Avast遮断のため。例外登録後は自動で満たされる見込み）、Chromium自動DLフォールバック（Chrome不在環境なし）、PDF日本語可読性の最終目視。
+- 残・未検証：条件9「再起動」の**実配布exeでのライブ通し**（現行v4.0.1/v4.1.0は遅延追加前のため。遅延の効果自体は実測済み・次リリースから成立見込み）。より確実にするなら**池本がAvastを“フォルダ例外”に変更**。Chromium自動DLフォールバック（Chrome不在環境なし）、PDF日本語可読性の最終目視。
