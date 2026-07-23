@@ -15,8 +15,8 @@ FireShot相当のフルページSSツールを **Windows単体exe**（Python + P
 ## PHASE 3の要点・ハマりどころ
 - **SSL**: Python3.13+の`VERIFY_X509_STRICT`が、セキュリティソフトのHTTPS検査CA（basicConstraints非critical）を拒否→更新チェックが黙って失敗する。`update._ssl_context()`でstrictのみ解除（チェーン検証は維持）。v4.0.0はこの修正前のexeだったためリリース削除→v4.0.1で置換済み。
 - **updater.bat**: `timeout.exe`はコンソール無しプロセスで即エラーになる（リトライが一瞬で溶ける）→ `ping -n 2`で待機。DLファイルのAVスキャンロック対策でdelもリトライ。パスは引数渡し（bat本体はASCII維持）。ユニーク名で生成。
-- **Avast（このPC）**: 池本が`build\dist\PATTI_SHOT.exe`を**ファイル例外**登録済み。ただし例外は**ファイル単位で、置き換え直後の“新しく書かれたexe”の起動は一時的に遮断される**（実時間スキャン）。数十秒後や内容不変なら起動可。→ **推奨は「フォルダ例外」**（build\dist配下やDownloads\PATTI SHOTごと）にして置き換え後も許可されるようにすること。
-- gh CLIは導入済み・`ikemotodir`で認証済み。release.batはv4.0.1/v4.1.0を全自動公開済み（重複タグ拒否ガード付き）。
+- **Avast（このPC）**: 池本が**フォルダ例外**に変更済み（当初はファイル例外で、置換直後の“新しく書かれたexe”起動が一時遮断された）。フォルダ例外＋再起動前ウェイトで置換直後起動もOKを実測。利用者にも配布ページで「フォルダごと除外」を案内するのが確実。
+- gh CLIは導入済み・`ikemotodir`で認証済み。release.batはv4.0.1/v4.1.0/v4.1.1を全自動公開済み（重複タグ拒否ガード付き）。
 
 ## 自動更新（条件9）実戦検証の結論（2026-07-23・**全10項目PASS / v4.1.1で解消**）
 検証：`test/test_update_e2e_live.py`（実GitHubからDL）、`test/test_update_safety.py`（安全装置5種）、`test/test_update_ui.py`（UI）、`scratchpad/real_relaunch.ps1`（実ユーザー相当のダブルクリック起動→更新→再起動の通し）。すべてAvast許可パス`build\dist\PATTI_SHOT.exe`上で実施。
@@ -68,6 +68,6 @@ set PATTI_SHOT_SELFTEST=https://example.com/ && set PATTI_SHOT_OUT_DIR=%TEMP%\st
 完了条件の機械検証：`test\test_output.py` / `test_app.py` / `test_split.py` / `test_conditions.py`。
 
 ## 次にやること
-- 池本：Avastの例外登録（上記）→ 実機でexeダブルクリック→撮影→（次回リリース時）更新ボタンの体感確認。
+- 池本：実機でexeを開き→撮影の体感確認。更新ボタンの体感は「v4.1.1が入った状態→次にv4.1.2以降を出したとき」に自動再起動まで通る（v4.0.1/v4.1.0からの初回更新だけは手動で開き直し）。
 - 次リリースの手順：`__version__`を上げて`release.bat`をダブルクリックするだけ。
-- 残・未検証：条件9「再起動」の**実配布exeでのライブ通し**（現行v4.0.1/v4.1.0は遅延追加前のため。遅延の効果自体は実測済み・次リリースから成立見込み）。より確実にするなら**池本がAvastを“フォルダ例外”に変更**。Chromium自動DLフォールバック（Chrome不在環境なし）、PDF日本語可読性の最終目視。
+- 残・未検証：Chromium自動DLフォールバック（Chrome不在環境が用意できず）、PDF日本語可読性の最終目視。
