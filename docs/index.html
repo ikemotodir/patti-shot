@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PATTI SHOT ── Webページを丸ごと1枚に撮るスクリーンショット（無料・Windows）</title>
-<meta name="description" content="スクロールしないと見えない一番下まで、Webページを丸ごと1枚のPNG/PDFに保存する無料ツール。ダブルクリックで起動、ボタン1つで撮影。データはあなたのPCの中だけ。">
+<meta name="description" content="スクロールしないと見えない一番下まで、Webページを丸ごと1枚のPNG/PDFに保存する無料ツール。会議資料の保存や、WebページをまるごとAIに読ませたい時にも。データはあなたのPCの中だけ。">
 <meta name="theme-color" content="#1a1a24">
 
 <!-- SNSシェア時のプレビュー（OGP / Twitterカード） -->
@@ -168,25 +168,24 @@
     text-align: center; color: var(--text-sub); font-size: .95rem;
   }
 
-  /* 広告枠（ハウス広告） */
-  .sponsor-strip {
+  /* スポンサー枠
+     流用元: PATTI CREATIVE PRODUCT トップページ (ikemotodir.github.io / apps/patti-creative-product/index.html) の
+     .sponsor-box 仕様。棚側の仕様が更新されたらこのブロックと下のマークアップを追従させること */
+  .sponsor-box {
     background: linear-gradient(135deg, rgba(214,51,108,.12), rgba(255,196,0,.08));
     border: 1px dashed var(--pink);
     border-radius: 16px;
-    padding: 22px;
+    padding: 28px 24px;
     text-align: center;
   }
-  .sponsor-strip p { color: var(--text-sub); font-size: .92rem; margin-bottom: 12px; }
-  .sponsor-strip a.mini {
-    display: inline-block;
-    background: var(--pink);
-    color: #fff;
-    text-decoration: none;
-    font-weight: 700;
-    font-size: .95rem;
-    padding: 10px 28px;
-    border-radius: 999px;
+  .sponsor-box h3 { font-weight: 900; font-size: 1.2rem; }
+  .sponsor-box p {
+    color: var(--text-sub);
+    font-size: .92rem;
+    max-width: 560px;
+    margin: 10px auto 18px;
   }
+  .sponsor-box .btn { margin-top: 0; font-size: 1rem; padding: 12px 36px; }
 
   details {
     background: var(--card);
@@ -232,7 +231,7 @@
 <header>
   <img class="logo" src="assets/patti_logo.png" alt="PATTI SHOT ロゴ">
   <h1>PATTI <span class="accent">SHOT</span></h1>
-  <p class="tagline">Webページを、スクロールしないと見えない一番下まで<br>丸ごと1枚のPNG / PDFに保存する無料ツール</p>
+  <p class="tagline">Webページを、スクロールしないと見えない一番下まで<br>丸ごと1枚のPNG / PDFに保存する無料ツール。<br>会議資料の保存や、WebページをまるごとAIに読ませたい時にも。</p>
   <a class="btn" href="https://github.com/ikemotodir/patti-shot/releases/latest/download/PATTI_SHOT.exe"
      onclick="gtag('event','download',{app:'patti-shot'})">⬇ 無料ダウンロード（Windows）</a>
   <p class="sub">無料・登録不要・Windows 10/11用 ／ <a href="https://github.com/ikemotodir/patti-shot">ソースコードを見る（GitHub）</a></p>
@@ -291,6 +290,33 @@
     </div>
   </section>
 
+  <!-- セキュリティソフトの警告について -->
+  <section>
+    <h2>🛡 セキュリティソフトの<span class="accent">警告について</span></h2>
+    <div class="local-box" style="text-align:left">
+      PATTI SHOT は署名のない個人開発アプリのため、初回起動時に Windows（SmartScreen）や
+      セキュリティソフト（Avast など）が警告を出すことがあります。<br>
+      これは<strong>「作者不明の新しいアプリ」に対する一般的な反応</strong>で、ウイルスが検出されたわけではありません。<br><br>
+      安心材料として、事実を全部書いておきます：<br>
+      ・撮影した画像・PDFを外部に送信することは一切ありません。処理はすべてあなたのPCの中で完結します<br>
+      ・通信するのは「起動時の更新チェック（GitHubに最新バージョンを確認しに行くだけ）」と「Webページを見るための普通のブラウザ通信」のみ<br>
+      ・<a href="https://github.com/ikemotodir/patti-shot" style="color:var(--yellow)">ソースコードは GitHub で全公開</a>しており、誰でも中身を確認できます
+    </div>
+    <div style="margin-top:14px">
+      <details><summary>Windows「PCが保護されました」と出たら（SmartScreen）</summary>
+        <p><b>「詳細情報」→「実行」</b>の順にクリックしてください。署名のない個人開発アプリで必ず出る画面で、異常ではありません。</p></details>
+      <details><summary>Avast がブロックしたら（例外の追加手順）</summary>
+        <p>
+          Avast の画面から、次の順でPATTI SHOTを「例外」に追加してください：<br>
+          1. Avast を開く → 右上の「メニュー」→「設定」<br>
+          2. 「全般」→「例外」→「例外を追加」<br>
+          3. <b>パスを手で入力せず、「参照」からファイルを選ぶ方式で</b> <code>PATTI_SHOT.exe</code>（ダウンロードした場所）を指定<br>
+          4. 「例外を追加」で確定 → PATTI_SHOT.exe をもう一度ダブルクリック<br>
+          ※パスを直接入力する方式だと、起動時にエラーになる場合があることを確認しています。必ず「参照」で選んでください。
+        </p></details>
+    </div>
+  </section>
+
   <!-- 設定 -->
   <section>
     <h2>⚙ 設定（<span class="accent">2つだけ</span>）</h2>
@@ -310,12 +336,15 @@
     </p>
   </section>
 
-  <!-- 広告枠（ハウス広告） -->
+  <!-- スポンサー枠
+       流用元: PATTI CREATIVE PRODUCT トップページの #sponsor-box(文言・構造同一仕様)。
+       棚側(patti-creative-product)の仕様変更時はここも追従させること -->
   <section>
     <h2>📣 <span class="accent">SPONSOR</span></h2>
-    <div class="sponsor-strip">
-      <p>PATTI SHOT は、STUDIO PATTI が無料で公開しているツールです。<br>この棚を応援いただけるスポンサーを募集しています。</p>
-      <a class="mini" href="https://ikemotodir.github.io/contact.html"
+    <div class="sponsor-box">
+      <h3>この枠に、あなたの広告を。</h3>
+      <p>PATTI CREATIVE PRODUCT は、クリエイターが集まる無料ツールの棚です。広告は自社で直接ご相談を受け付けています。仲介システムなし、話が早いのが自慢です。</p>
+      <a class="btn" href="https://ikemotodir.github.io/contact.html"
          onclick="gtag('event','sponsor_contact_click',{from:'patti-shot'})">広告掲載の相談をする</a>
     </div>
   </section>
@@ -367,7 +396,7 @@
 </main>
 
 <footer>
-  <p>📸 PATTI SHOT v4.0.1</p>
+  <p>📸 PATTI SHOT v4.0.2</p>
   <p>© 2026 STUDIO PATTI LLC ── 合同会社スタジオパッチ（愛知県一宮市）</p>
   <p><a href="https://ikemotodir.github.io/" style="color:var(--yellow)">← PATTI CREATIVE PRODUCT トップへ</a></p>
 </footer>
