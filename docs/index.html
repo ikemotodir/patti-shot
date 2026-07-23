@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PATTI SHOT ── Webページを丸ごと1枚に撮るスクリーンショット（無料・Windows）</title>
+<meta name="description" content="スクロールしないと見えない一番下まで、Webページを丸ごと1枚のPNG/PDFに保存する無料ツール。ダブルクリックで起動、ボタン1つで撮影。データはあなたのPCの中だけ。">
+<meta name="theme-color" content="#1a1a24">
+
+<!-- SNSシェア時のプレビュー（OGP / Twitterカード） -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="PATTI CREATIVE PRODUCT">
+<meta property="og:title" content="PATTI SHOT ── Webページを丸ごと1枚に撮るスクリーンショット（無料・Windows）">
+<meta property="og:description" content="スクロールしないと見えない一番下まで、Webページを丸ごと1枚のPNG/PDFに。無料・登録不要・完全ローカル保存。">
+<meta property="og:url" content="https://ikemotodir.github.io/patti-shot/">
+<meta property="og:image" content="https://ikemotodir.github.io/patti-shot/assets/patti_logo.png">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary">
+
+<!-- Google Analytics (GA4) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-C9RFZES8ZS"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-C9RFZES8ZS');
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" href="assets/patti_logo.png">
+
+<style>
+  :root {
+    --pink: #D6336C;
+    --yellow: #FFC400;
+    --bg: #1a1a24;
+    --card: #232331;
+    --border: #2c2c3a;
+    --text: #ffffff;
+    --text-sub: #cccccc;
+    --text-dim: #bbbbbb;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Zen Maru Gothic', sans-serif;
+    font-weight: 500;
+    line-height: 1.8;
+  }
+  a { color: inherit; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 20px; }
+
+  header { text-align: center; padding: 56px 20px 40px; }
+  header img.logo { width: 88px; height: auto; margin-bottom: 14px; }
+  header h1 {
+    font-weight: 900;
+    font-size: clamp(1.8rem, 5vw, 2.8rem);
+    letter-spacing: .04em;
+  }
+  header h1 .accent { color: var(--pink); }
+  header .tagline {
+    margin-top: 12px;
+    font-size: clamp(1rem, 2.5vw, 1.15rem);
+    color: var(--text-sub);
+  }
+  .btn {
+    display: inline-block;
+    background: var(--pink);
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 1.2rem;
+    padding: 16px 44px;
+    border-radius: 999px;
+    box-shadow: 0 6px 24px rgba(214,51,108,.45);
+    margin-top: 24px;
+    transition: transform .15s ease;
+  }
+  .btn:hover { transform: translateY(-2px); }
+  header .sub { margin-top: 12px; color: var(--text-dim); font-size: .88rem; }
+  header .sub a { color: var(--text-dim); text-decoration: underline; }
+  .home-link {
+    display: inline-block;
+    margin-top: 20px;
+    color: var(--text-dim);
+    font-size: .85rem;
+    text-decoration: none;
+  }
+  .home-link:hover { color: var(--yellow); }
+
+  section { padding: 36px 0; }
+  h2 { font-weight: 700; font-size: 1.45rem; text-align: center; margin-bottom: 24px; }
+  h2 .accent { color: var(--yellow); }
+
+  .local-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    text-align: center;
+    color: var(--text-sub);
+    font-size: .98rem;
+  }
+  .local-box strong { color: var(--yellow); font-weight: 700; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 18px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 22px 20px;
+  }
+  .card .emoji { font-size: 1.8rem; }
+  .card h3 { font-weight: 700; font-size: 1.05rem; margin: 6px 0; }
+  .card p { color: var(--text-sub); font-size: .9rem; }
+
+  ol.steps { max-width: 640px; margin: 0 auto; padding-left: 0; list-style: none; counter-reset: step; }
+  ol.steps li {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 20px 18px 60px;
+    margin-bottom: 14px;
+    position: relative;
+  }
+  ol.steps li::before {
+    counter-increment: step;
+    content: counter(step);
+    position: absolute;
+    left: 16px; top: 16px;
+    width: 30px; height: 30px;
+    background: var(--pink);
+    color: #fff;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900;
+  }
+  ol.steps li b { color: var(--text); }
+  code {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: .9em;
+    color: var(--yellow);
+  }
+  .warn {
+    max-width: 640px;
+    margin: 8px auto 0;
+    background: rgba(255,196,0,.1);
+    border: 1px solid var(--yellow);
+    border-radius: 12px;
+    padding: 14px 18px;
+    font-size: .9rem;
+    color: var(--text-sub);
+  }
+  .warn strong { color: var(--yellow); }
+
+  .update-note {
+    max-width: 640px; margin: 0 auto;
+    text-align: center; color: var(--text-sub); font-size: .95rem;
+  }
+
+  /* 広告枠（ハウス広告） */
+  .sponsor-strip {
+    background: linear-gradient(135deg, rgba(214,51,108,.12), rgba(255,196,0,.08));
+    border: 1px dashed var(--pink);
+    border-radius: 16px;
+    padding: 22px;
+    text-align: center;
+  }
+  .sponsor-strip p { color: var(--text-sub); font-size: .92rem; margin-bottom: 12px; }
+  .sponsor-strip a.mini {
+    display: inline-block;
+    background: var(--pink);
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: .95rem;
+    padding: 10px 28px;
+    border-radius: 999px;
+  }
+
+  details {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 4px 18px;
+    margin-bottom: 10px;
+  }
+  details summary {
+    font-weight: 700;
+    cursor: pointer;
+    padding: 12px 0;
+    list-style: none;
+  }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::before { content: "＋ "; color: var(--pink); font-weight: 900; }
+  details[open] summary::before { content: "− "; }
+  details p { color: var(--text-sub); font-size: .92rem; padding: 0 0 14px; }
+
+  .legal {
+    max-width: 720px; margin: 0 auto;
+    color: var(--text-dim); font-size: .82rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+  }
+  .legal p + p { margin-top: 8px; }
+
+  footer {
+    border-top: 1px solid var(--border);
+    margin-top: 36px;
+    padding: 28px 20px 44px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: .8rem;
+  }
+  footer p + p { margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <img class="logo" src="assets/patti_logo.png" alt="PATTI SHOT ロゴ">
+  <h1>PATTI <span class="accent">SHOT</span></h1>
+  <p class="tagline">Webページを、スクロールしないと見えない一番下まで<br>丸ごと1枚のPNG / PDFに保存する無料ツール</p>
+  <a class="btn" href="https://github.com/ikemotodir/patti-shot/releases/latest/download/PATTI_SHOT.exe"
+     onclick="gtag('event','download',{app:'patti-shot'})">⬇ 無料ダウンロード（Windows）</a>
+  <p class="sub">無料・登録不要・Windows 10/11用 ／ <a href="https://github.com/ikemotodir/patti-shot">ソースコードを見る（GitHub）</a></p>
+  <a class="home-link" href="https://ikemotodir.github.io/">← PATTIツールの棚にもどる</a>
+</header>
+
+<main class="wrap">
+
+  <!-- 完全ローカルの安心 -->
+  <section>
+    <div class="local-box">
+      撮影した画像・PDFは<strong>あなたのPCの中だけ</strong>に保存されます。<br>
+      どこかのサーバーにアップロードされることはありません。<br>
+      保存先は <strong>ダウンロード\PATTI SHOT</strong> フォルダ。撮影が終わると自動で開きます。
+    </div>
+  </section>
+
+  <!-- できること -->
+  <section>
+    <h2>📸 こんなことが<span class="accent">できる</span></h2>
+    <div class="grid">
+      <div class="card">
+        <div class="emoji">📜</div>
+        <h3>一番下まで丸ごと1枚</h3>
+        <p>縦に長いページも、スクロールしないと見えない一番下まで丸ごと撮影。業務システムの長い検索結果や、縦長のLPも一発です。</p>
+      </div>
+      <div class="card">
+        <div class="emoji">🖼️</div>
+        <h3>PNGとPDFで保存</h3>
+        <p>画像（PNG）と、そのまま資料にできるPDFの両方に対応。2倍・3倍の高解像度撮影もできるので、ズームしても文字がくっきり。</p>
+      </div>
+      <div class="card">
+        <div class="emoji">🔑</div>
+        <h3>ログインしたままのページもOK</h3>
+        <p>専用ブラウザで普通にログインして使えます。ログイン状態は次回起動時も保持されるので、会員ページや管理画面の記録にも。</p>
+      </div>
+      <div class="card">
+        <div class="emoji">🖱️</div>
+        <h3>操作はボタン1つ</h3>
+        <p>撮りたいページで、画面右下のピンクの「PATTI SHOT」ボタンを押すだけ。設定も歯車マークから選ぶだけの2項目です。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- はじめかた -->
+  <section>
+    <h2>🚀 はじめかた（<span class="accent">3ステップ</span>）</h2>
+    <ol class="steps">
+      <li>上の <b>「⬇ 無料ダウンロード」</b> を押す → <code>PATTI_SHOT.exe</code> が保存されます</li>
+      <li>保存した <code>PATTI_SHOT.exe</code> を<b>ダブルクリック</b> → 専用のブラウザが開きます（インストール作業はありません）</li>
+      <li>撮りたいページを開いて、画面右下の<b>ピンクの「PATTI SHOT」ボタンをクリック</b> → 撮影完了！保存フォルダが自動で開きます</li>
+    </ol>
+    <div class="warn">
+      <strong>⚠「WindowsによってPCが保護されました」と出たら</strong>：<strong>「詳細情報」→「実行」</strong>の順にクリックしてください。
+      これは署名のない個人開発アプリで必ず出る画面で、異常ではありません。
+    </div>
+  </section>
+
+  <!-- 設定 -->
+  <section>
+    <h2>⚙ 設定（<span class="accent">2つだけ</span>）</h2>
+    <p class="update-note">
+      ボタンの上の<b>歯車マーク⚙</b>を押すと設定が開きます。<br>
+      <b>保存形式</b>（PNG / PDF / 両方）と<b>画質</b>（1x / 2x / 3x）を選ぶだけ。次回も覚えています。
+    </p>
+  </section>
+
+  <!-- アップデート -->
+  <section>
+    <h2>🔃 アップデート</h2>
+    <p class="update-note">
+      起動すると自動で新しいバージョンを確認します。<br>
+      新しい版があると画面右下にお知らせが出るので、<b>「更新する」を押すだけ</b>。<br>
+      ダウンロード → 置き換え → 再起動まで全自動です。
+    </p>
+  </section>
+
+  <!-- 広告枠（ハウス広告） -->
+  <section>
+    <h2>📣 <span class="accent">SPONSOR</span></h2>
+    <div class="sponsor-strip">
+      <p>PATTI SHOT は、STUDIO PATTI が無料で公開しているツールです。<br>この棚を応援いただけるスポンサーを募集しています。</p>
+      <a class="mini" href="https://ikemotodir.github.io/contact.html"
+         onclick="gtag('event','sponsor_contact_click',{from:'patti-shot'})">広告掲載の相談をする</a>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section>
+    <h2>❓ よくある質問</h2>
+
+    <details><summary>撮った画像がどこかに送信されたりしない？</summary>
+      <p>されません。撮影と保存はすべてあなたのPCの中で完結します。通信が発生するのは「起動時の更新チェック（GitHubに最新版を確認）」と「Webページを見るための普通のブラウザ通信」だけです。</p></details>
+
+    <details><summary>動作環境は？</summary>
+      <p>Windows 10 / 11 です。ブラウザは、PCにインストール済みの Google Chrome を使います（Chrome推奨）。Chromeが無い場合は、初回だけ専用ブラウザを自動で取得します（操作は不要です）。</p></details>
+
+    <details><summary>「WindowsによってPCが保護されました」と出て起動できない</summary>
+      <p>「詳細情報」→「実行」の順にクリックしてください。署名のない個人開発アプリで必ず出る表示で、異常ではありません。</p></details>
+
+    <details><summary>ウイルス対策ソフトが警告を出すことがある？</summary>
+      <p>ごくまれに誤検知されることがあります（このアプリの作り方＝PyInstaller製のexeで起こり得る既知の現象です）。ソースコードは全部GitHubで公開しているので、中身は誰でも確認できます。</p></details>
+
+    <details><summary>ログインが必要なページも撮れる？</summary>
+      <p>撮れます。開いた専用ブラウザで普通にログインすれば、見えている画面がそのまま撮影されます。ログイン状態は次回起動時も保持されます。</p></details>
+
+    <details><summary>どのくらい長いページまで撮れる？</summary>
+      <p>数万ピクセル級の非常に長いページまで対応しています。あまりに長いページでは、PDFは規格の上限に合わせて自動で複数ページに分かれます（文字の行が切れない位置で分割されます）。</p></details>
+
+    <details><summary>撮影に失敗したら？</summary>
+      <p>空白などの失敗を自動で検出して、条件を変えて自動でリトライします。それでも失敗した場合だけ、画面に日本語で理由が表示されます。</p></details>
+
+    <details><summary>Macで使える？</summary>
+      <p>現在はWindows専用（Windows 10 / 11）です。</p></details>
+
+    <details><summary>商用利用できる？</summary>
+      <p>できます。ただし、撮影したページの内容の権利は各サイトにあります。社内記録・資料などの範囲でご利用ください。</p></details>
+
+    <details><summary>なぜ無料なの？怪しくない？</summary>
+      <p>「クリエイターがちょっと助かるツールを無料で公開する」という STUDIO PATTI の活動の一環です（このページの広告枠などで運営しています）。全ソースコードをGitHubで公開しているので、中身は誰でも確認できます。</p></details>
+  </section>
+
+  <!-- 免責 -->
+  <section>
+    <div class="legal">
+      <p>※本ツールの利用によって生じたいかなる損害・トラブルについても、STUDIO PATTI（合同会社スタジオパッチ）は一切の責任を負いません。自己責任でご利用ください。</p>
+      <p>※撮影したページの著作権・利用規約は各サイトの定めに従ってください。権利を持たないコンテンツの再配布は行わないでください。</p>
+      <p>※お使いの環境によっては、正しく動作しない場合があります。</p>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>📸 PATTI SHOT v4.0.1</p>
+  <p>© 2026 STUDIO PATTI LLC ── 合同会社スタジオパッチ（愛知県一宮市）</p>
+  <p><a href="https://ikemotodir.github.io/" style="color:var(--yellow)">← PATTI CREATIVE PRODUCT トップへ</a></p>
+</footer>
+
+</body>
+</html>

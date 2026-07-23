@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+build/dist/
+build/work/
+build/ver.txt
+build/notes.md
+build/*.spec
+test/artifacts/
+test/fixtures/
