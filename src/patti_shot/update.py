@@ -78,10 +78,12 @@ _UPDATER_BAT = (
     "  goto cleanup\r\n"
     ")\r\n"
     "echo [bat] replace ok>>%3\r\n"
-    "rem give real-time antivirus time to finish scanning the freshly-written\r\n"
-    "rem exe before relaunching it (Avast blocks launch of a just-created file)\r\n"
+    "rem short wait so real-time antivirus finishes scanning the freshly-written\r\n"
+    "rem exe before relaunch (folder-level AV exclusion + this delay clears\r\n"
+    "rem Avast -- measured). The relaunched app gets a clean environment (see\r\n"
+    "rem spawn_updater) so it opens the normal window instead of any test mode.\r\n"
     "ping -n 8 127.0.0.1 >nul\r\n"
-    "start \"\" %1\r\n"
+    "start \"\" \"%~1\"\r\n"
     "echo [bat] relaunch issued>>%3\r\n"
     ":cleanup\r\n"
     "del /f /q %1.bak >nul 2>&1\r\n"
@@ -119,6 +121,12 @@ def _log(msg: str) -> None:
             f.write(f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S} {msg}\n")
     except Exception:
         pass
+
+
+def log_boot(version: str) -> None:
+    """One line written the instant the app starts (before network/browser),
+    so a post-update auto-relaunch is unambiguously visible in update.log."""
+    _log(f"boot: PATTI SHOT v{version} started")
 
 
 def _parse_ver(s: str) -> Tuple[int, ...]:
@@ -196,9 +204,23 @@ def spawn_updater(target: str, new_exe: str, max_retry: int = 120) -> None:
     fd, bat = tempfile.mkstemp(prefix="patti_shot_update_", suffix=".bat")
     with os.fdopen(fd, "w", encoding="ascii", newline="") as f:
         f.write(_UPDATER_BAT)
+    # The relaunched app must start CLEAN:
+    #  - strip PATTI_SHOT_* so it never inherits a test/selftest mode;
+    #  - strip PyInstaller's onefile bootloader vars (_MEIPASS2 / _PYI_*). The
+    #    old exe is itself a PyInstaller onefile; if the new exe inherits these
+    #    it looks for its payload in the OLD exe's already-deleted _MEI temp dir
+    #    and silently fails to launch (this is why the auto-relaunch appeared to
+    #    do nothing while a direct launch worked).
+    def _keep(k: str) -> bool:
+        if k.startswith("PATTI_SHOT_"):
+            return False
+        ku = k.upper()
+        return not (ku.startswith("_MEI") or ku.startswith("_PYI"))
+
+    child_env = {k: v for k, v in os.environ.items() if _keep(k)}
     flags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
     subprocess.Popen(["cmd", "/c", bat, target, new_exe, log_path(), str(int(max_retry))],
-                     creationflags=flags, close_fds=True,
+                     env=child_env, creationflags=flags, close_fds=True,
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL)
 

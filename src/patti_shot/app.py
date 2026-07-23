@@ -104,14 +104,20 @@ def run(headless: bool = False) -> int:
                     f.write(msg + "\n")
         info = update.check_latest()
         if info:
-            ok = update.apply_update(info)
-            _mark(f"current={__version__} found={info['tag']} applied={ok}")
+            err = update.apply_update(info)  # None = success (updater spawned)
+            ok = err is None
+            _mark(f"current={__version__} found={info['tag']} applied={ok}"
+                  + (f" err={err}" if err else ""))
             print(f"UPDATE_TEST: current={__version__} found={info['tag']} "
-                  f"applied={ok}", flush=True)
+                  f"applied={ok}" + (f" err={err}" if err else ""), flush=True)
             return 0 if ok else 1
         _mark(f"current={__version__} no-update")
         print(f"UPDATE_TEST: current={__version__} no-update", flush=True)
         return 0
+
+    # record every normal boot up-front (before any network/browser work) so a
+    # post-update relaunch is unambiguously observable in update.log.
+    update.log_boot(__version__)
 
     # normal startup: check in the background; never block or fail startup.
     upd_state = {"info": None, "applying": False}
@@ -124,8 +130,9 @@ def run(headless: bool = False) -> int:
     with sync_playwright() as p:
         lr = browser.launch(p, browser.default_profile_dir(), headless=headless, viewport=None)
         ctx = lr.context
-        # inject persisted settings, then the floating UI
-        ctx.add_init_script("window.__PATTISHOT_SETTINGS__ = " + json.dumps(settings) + ";")
+        # inject persisted settings + version, then the floating UI
+        ctx.add_init_script("window.__PATTISHOT_SETTINGS__ = " + json.dumps(settings) + ";"
+                            + "window.__PATTISHOT_VERSION__ = " + json.dumps(__version__) + ";")
         ctx.add_init_script(FLOATING_UI_JS)
 
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
@@ -166,10 +173,21 @@ def run(headless: bool = False) -> int:
                                     "{ d.removeAttribute('data-patti-shot-update'); return true; } "
                                     "return false; }"):
                                 upd_state["applying"] = True
-                                if update.apply_update(upd_state["info"]):
+                                err = update.apply_update(upd_state["info"])
+                                if err is None:
                                     return 0  # updater takes over; exit now
+                                # failed: old exe untouched. Tell the user in
+                                # Japanese with the manual-download fallback
+                                # (検証指示書 section 4) and reset the button.
+                                try:
+                                    pg.evaluate(
+                                        "(m) => { const A=window.__PATTISHOT_UI_API__;"
+                                        " if (A) { A.resetUpdate(); A.notify(m, true); } }",
+                                        f"自動更新に失敗しました。\n{err}")
+                                except Exception:
+                                    pass
                                 upd_state["applying"] = False
-                                upd_state["info"] = None  # failed; drop silently
+                                upd_state["info"] = None  # do not loop forever
                         s = pg.evaluate(_GET_SET)
                         if s:
                             settings = {"fmt": json.loads(s).get("fmt", "both"),
