@@ -10,7 +10,13 @@ FireShot相当のフルページSSツールを **Windows単体exe**（Python + P
 ## 現在のPHASE
 - PHASE 1（撮影エンジン＋自動検証ハーネス）完了。15件×9判定PASS（`test/REPORT.md`）。
 - PHASE 2（フローティングUI / PNG・PDF出力 / 保存処理 / exe化）完了。完了条件1〜8 PASS。exe自己テスト（`PATTI_SHOT_SELFTEST=<url>`）で実Chrome起動→撮影→PNG/PDF保存まで実証。
-- **PHASE 3（自動更新 / release.bat / 配布ページ / 棚トップ更新）進行中。** v4.0.1をGitHub Releasesに公開済み。配布ページは`docs/`（GitHub Pagesの制約でspecの`site/`は`docs/`に読み替え）。
+- **PHASE 3（自動更新 / release.bat / 配布ページ / 棚トップ更新）完了・池本確認待ち。** v4.0.1公開済み（https://github.com/ikemotodir/patti-shot/releases ）。配布ページ https://ikemotodir.github.io/patti-shot/ 稼働・棚トップのカードも「公開中」化済み。配布ページは`docs/`（GitHub Pagesの制約でspecの`site/`は`docs/`に読み替え）。
+
+## PHASE 3の要点・ハマりどころ
+- **SSL**: Python3.13+の`VERIFY_X509_STRICT`が、セキュリティソフトのHTTPS検査CA（basicConstraints非critical）を拒否→更新チェックが黙って失敗する。`update._ssl_context()`でstrictのみ解除（チェーン検証は維持）。v4.0.0はこの修正前のexeだったためリリース削除→v4.0.1で置換済み。
+- **updater.bat**: `timeout.exe`はコンソール無しプロセスで即エラーになる（リトライが一瞬で溶ける）→ `ping -n 2`で待機。DLファイルのAVスキャンロック対策でdelもリトライ。パスは引数渡し（bat本体はASCII維持）。ユニーク名で生成。
+- **Avast（このPC）**: 何度か起動テストを繰り返すうち、Avastが**あらゆるPATTI_SHOT.exeの起動を「Access is denied」で遮断**するようになった（ハッシュ同一のローカルビルドも遮断）。§11の想定リスクが現実化した形。**池本のAvast例外登録が必要**（設定→例外→`PATTI_SHOT.exe`または`Downloads\PATTI SHOT`と`build\dist`を追加）。条件9の「再起動」検証はこの遮断のため未完（置き換えまでは実exe+実リリースで検証済み）。
+- gh CLIは導入済み・`ikemotodir`で認証済み。release.batは実際にv4.0.1を全自動公開済み（重複タグは拒否するガード付き）。
 
 ## PHASE 2の要点・ハマりどころ
 - UI⇔Python連携は**binding不可**（sync Playwrightはbindingハンドラ内で長時間のネスト呼び出しができずデッドロック）。→ FABは`<html>`属性`data-patti-shot-request`に要求を書き、`app.run`のポーリングループが撮影を実行して`data-patti-shot-result`で返す方式。進捗は`document.title`（撮影に写らない）で表示。
@@ -54,5 +60,6 @@ set PATTI_SHOT_SELFTEST=https://example.com/ && set PATTI_SHOT_OUT_DIR=%TEMP%\st
 完了条件の機械検証：`test\test_output.py` / `test_app.py` / `test_split.py` / `test_conditions.py`。
 
 ## 次にやること
-- PHASE 2完了報告済み→承認後にPHASE 3（自動更新 / release.bat[gh CLI] / `ikemotodir.github.io/patti-shot/`プロダクトページ新規 / 棚トップのSHOTカード更新 / README）着手。gh CLIはPHASE 3で導入。
-- 残・未検証：Chromium自動DLフォールバック（Chrome不在環境が無く未検証）、PDFの日本語可読性は最終目視推奨。
+- 池本：Avastの例外登録（上記）→ 実機でexeダブルクリック→撮影→（次回リリース時）更新ボタンの体感確認。
+- 次リリースの手順：`__version__`を上げて`release.bat`をダブルクリックするだけ。
+- 残・未検証：条件9の「再起動」工程（Avast遮断のため。例外登録後は自動で満たされる見込み）、Chromium自動DLフォールバック（Chrome不在環境なし）、PDF日本語可読性の最終目視。
