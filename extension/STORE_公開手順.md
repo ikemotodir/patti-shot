@@ -34,7 +34,7 @@
 
 1. ダッシュボードの「**新しいアイテム**」をクリック
 2. 「ファイルを選択」で次のzipを選ぶ：
-   `C:\Users\studi\Desktop\Claude\apps\patti-shot\build\patti_shot_extension_v5.0.0.zip`
+   `C:\Users\studi\Desktop\Claude\apps\patti-shot\build\patti_shot_extension_v5.0.2.zip`
 3. アップロードが終わると入力画面になります → 次のSTEPの文章をコピペ
 
 ---

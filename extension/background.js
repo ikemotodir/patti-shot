@@ -102,12 +102,14 @@ async function captureTab(tab, settings) {
 
   await attach(tabId);
   await ensureOffscreen();
-  await askOffscreen({ cmd: 'begin', width: cssW * scale, height: cssH * scale });
 
   const split = cssH * scale > SINGLE_SHOT_MAX_DEVICE;
   let bands = 0;
+  let finalCssH = cssH;              // may change under an emulated viewport
+  let contentH = m.contentHeight;
   try {
     if (!split) {
+      await askOffscreen({ cmd: 'begin', width: cssW * scale, height: cssH * scale });
       progress(tabId, 0, 1);
       const shot = await sendCmd(tabId, 'Page.captureScreenshot', {
         format: 'png', captureBeyondViewport: true, fromSurface: true,
@@ -129,13 +131,24 @@ async function captureTab(tab, settings) {
       await sendCmd(tabId, 'Emulation.setDeviceMetricsOverride',
         { width: cssW, height: vp, deviceScaleFactor: scale, mobile: false });
       try {
-        const totalDev = Math.round(cssH * scale);
+        // The taller viewport reflows the page, so the height measured with the
+        // old viewport is stale. Stitching against a stale total misaligns the
+        // bands and repeats rows -- measure again before allocating anything.
+        await new Promise((r) => setTimeout(r, 400));
+        const m2 = await runInPage(tabId, () => window.__PATTISHOT__.measure());
+        finalCssH = Math.max(1, Math.round(m2.captureHeight));
+        contentH = m2.contentHeight;
+        await askOffscreen({ cmd: 'begin', width: cssW * scale, height: finalCssH * scale });
+
+        const totalDev = Math.round(finalCssH * scale);
         const estimate = Math.max(1, Math.ceil(totalDev / Math.round(vp * scale)));
         let covered = 0, guard = 0;
         while (covered < totalDev && guard++ < 4000) {
           progress(tabId, bands, estimate);
           const yCss = covered / scale;
           await runInPage(tabId, (y) => window.scrollTo(0, y), [yCss]);
+          // settle: let the scroll commit and any just-revealed content paint
+          await new Promise((r) => setTimeout(r, 120));
           const actual = await runInPage(tabId, () => window.scrollY);
           const shot = await sendCmd(tabId, 'Page.captureScreenshot',
             { format: 'png', captureBeyondViewport: false, fromSurface: true });
@@ -162,10 +175,10 @@ async function captureTab(tab, settings) {
   }
 
   // finish: trailing trim + blank check + encode + save
-  const maxTrim = Math.max(0, Math.round((cssH - m.contentHeight) * scale) + 4 * scale);
+  const maxTrim = Math.max(0, Math.round((finalCssH - contentH) * scale) + 4 * scale);
   const out = await askOffscreen({
     cmd: 'finish', fmt, scale, maxTrim,
-    base: basename(tab.url), contentHeight: m.contentHeight,
+    base: basename(tab.url), contentHeight: contentH,
   });
 
   const files = [];

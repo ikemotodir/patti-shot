@@ -142,6 +142,43 @@ def main():
               f"{'PASS' if results['covers_page'] else 'FAIL'}", flush=True)
         print(f"[4] 空白帯: {blank_total} -> {'PASS' if results['no_blank'] else 'FAIL'}", flush=True)
 
+        # [6] duplication: the boss saw the same row numbers repeating, which is
+        # what a misaligned stitch looks like. Two independent checks:
+        #   a) no long run of rows that repeats one viewport later
+        #   b) no two distant slices of the image that are identical
+        if pngs:
+            import numpy as np
+            arr = imaging.png_bytes_to_array(open(pngs[0], "rb").read())
+            png_scale = arr.shape[1] / css_w
+            dup = imaging.duplicate_run_px(arr, round(900 * png_scale)) / png_scale
+            results["no_dup_run"] = dup < 120
+            print(f"[6a] 同じ行の繰り返し: {dup:.0f}css px -> "
+                  f"{'PASS' if results['no_dup_run'] else 'FAIL'}", flush=True)
+
+            # Identical strips far apart. A page legitimately repeats small
+            # UI (the search form stacks identical checkbox rows), so only a
+            # stitch-sized repeat counts: the strip must be tall and the gap
+            # must be about a captured band, which is what a misaligned stitch
+            # produces.
+            band_px = 3600 * png_scale               # emulated capture band
+            strip = max(40, int(120 * png_scale))
+            seen, repeats, worst = {}, 0, None
+            for y in range(0, arr.shape[0] - strip, strip):
+                block = arr[y:y + strip]
+                if block.std() < 12:                 # skip near-uniform strips
+                    continue
+                key = hash(block.tobytes())
+                prev = seen.get(key)
+                if prev is not None and (y - prev) > band_px * 0.5:
+                    repeats += 1
+                    if worst is None:
+                        worst = (prev, y)
+                seen[key] = y
+            results["no_repeat_strips"] = repeats == 0
+            print(f"[6b] 貼り合わせ由来の重複: {repeats}件"
+                  + (f"（例: y={worst[0]} と y={worst[1]}）" if worst else "")
+                  + f" -> {'PASS' if results['no_repeat_strips'] else 'FAIL'}", flush=True)
+
         # PDF must have real pages
         if pdfs:
             import fitz
