@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<style>
+  body { width: 250px; margin: 0; padding: 16px; font: 13px/1.7 sans-serif; color: #222; }
+  h1 { font-size: 15px; margin: 0 0 4px; color: #D6336C; }
+  .ver { color: #888; font-size: 11px; margin-bottom: 12px; }
+  .lbl { font-weight: 700; margin: 10px 0 4px; }
+  label { margin-right: 10px; white-space: nowrap; }
+  button {
+    width: 100%; margin-top: 14px; padding: 10px; border: 0; border-radius: 10px;
+    background: #D6336C; color: #fff; font: 700 13px sans-serif; cursor: pointer;
+  }
+  .hint { margin-top: 10px; color: #777; font-size: 11px; }
+  .msg { margin-top: 10px; font-size: 12px; white-space: pre-line; }
+</style>
+</head>
+<body>
+  <h1>PATTI SHOT</h1>
+  <div class="ver" id="ver"></div>
+  <div class="lbl">保存形式</div>
+  <label><input type="radio" name="fmt" value="png"> PNG</label>
+  <label><input type="radio" name="fmt" value="pdf"> PDF</label>
+  <label><input type="radio" name="fmt" value="both"> 両方</label>
+  <div class="lbl">画質(倍率)</div>
+  <label><input type="radio" name="scale" value="1"> 1x</label>
+  <label><input type="radio" name="scale" value="2"> 2x</label>
+  <label><input type="radio" name="scale" value="3"> 3x</label>
+  <button id="shoot">このページを丸ごと撮影</button>
+  <div class="hint">ページ右下のピンクのボタン、または Ctrl+Shift+S でも撮影できます。<br>
+    保存先：ダウンロード \ PATTI SHOT</div>
+  <div class="msg" id="msg"></div>
+<script src="popup.js"></script>
+</body>
+</html>
