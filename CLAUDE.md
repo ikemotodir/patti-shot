@@ -26,6 +26,16 @@ FireShot相当のフルページSSツールを **Windows単体exe**（Python + P
 - **v4.1.1で本修正を公開済み**（release.batで自動）。**注意**：この修正は「新版側のupdate.py」で効くため、**旧配布の v4.0.1 / v4.1.0 → 新版**の初回更新だけは自動再起動しない（更新自体は成功・利用者がexeを開き直せば新版）。**v4.1.1以降どうしからの更新は自動再起動まで成立**（実測）。
 - 池本のPCで更新テストの起点にできるのは`build\dist\PATTI_SHOT.exe`のみ（他パス/TEMPはAvast遮断）。フォルダ例外登録済み。
 
+## 「いま見ているページ」問題（v4.2.0・2026-07-25）
+**Chrome側の仕様で「起動中の普通のChromeを撮る」は不可能**。3経路すべて実測で潰した（Chrome 150）：
+- 既定プロファイル + `--remote-debugging-port` → **拒否**（Chrome 136+のセキュリティ制限）。専用user-data-dirなら可。
+- Playwrightの`launch_persistent_context`で**本物のプロファイル**を開く → **タイムアウト拒否**（パイプ接続でも既定プロファイルはNG）。
+- 本物のプロファイルからCookieコピー → **`Access denied`**（セキュリティソフトが遮断。マルウェア的挙動なので採用すべきでない）。
+
+→ 代わりに**「そのページをPATTI SHOTで開く」を1アクション化**（`src/patti_shot/handoff.py`）：
+`pattishot:`プロトコル登録＋ブックマークレット（普段のChromeから1クリック）／クリップボードのURL自動オープン（設定不要）／コマンドライン引数／**単一起動ガード**（2回目起動はURLを`open_url.txt`で受け渡し、起動中のウィンドウに新タブで開く）。検証は`test/test_handoff.py`＋実exe（URL引数・二重起動なし・受け渡し消費・クリップボードで実際にページが開くことを確認）。
+**ログイン手間は消せない**（上記の通り技術的に不可）。PATTI SHOTのプロファイルは永続なので「初回だけログイン」で以降は保持、と案内する方針。
+
 ## PHASE 2の要点・ハマりどころ
 - UI⇔Python連携は**binding不可**（sync Playwrightはbindingハンドラ内で長時間のネスト呼び出しができずデッドロック）。→ FABは`<html>`属性`data-patti-shot-request`に要求を書き、`app.run`のポーリングループが撮影を実行して`data-patti-shot-result`で返す方式。進捗は`document.title`（撮影に写らない）で表示。
 - **メモリリーク（重要）**：撮影ごとに巨大配列を確保→解放するとPlaywrightの割当と断片化し解放領域が再利用されず、1回~90MB増加（Python3.14/numpy2.5.1）。→ `engine.capture(reuse_buffer=True)`で**出力バッファを使い回し**（アプリは撮影結果を即保存するので安全）。ただし複数結果を同時保持するテストは`reuse_buffer=False`（既定）で独立配列を使う。app.do_captureはTrue。連続10回で+119MB（合格域）。
