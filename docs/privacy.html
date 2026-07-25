@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PATTI SHOT プライバシーポリシー</title>
+<meta name="description" content="PATTI SHOT（Chrome拡張機能）のプライバシーポリシー。撮影した画像・閲覧情報を一切収集・送信しません。">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root { --pink:#D6336C; --yellow:#FFC400; --bg:#1a1a24; --card:#232331; --border:#2c2c3a;
+          --text:#fff; --text-sub:#ccc; --text-dim:#bbb; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'Zen Maru Gothic',sans-serif;
+         font-weight:500; line-height:1.9; }
+  .wrap { max-width:760px; margin:0 auto; padding:0 20px; }
+  header { text-align:center; padding:48px 20px 24px; }
+  header h1 { font-weight:900; font-size:clamp(1.4rem,4vw,2rem); }
+  header h1 .accent { color:var(--pink); }
+  header p { margin-top:10px; color:var(--text-dim); font-size:.85rem; }
+  section { padding:20px 0; }
+  h2 { font-size:1.1rem; font-weight:700; color:var(--yellow); margin-bottom:10px; }
+  p, li { color:var(--text-sub); font-size:.95rem; }
+  ul { padding-left:1.2em; margin-top:8px; }
+  li + li { margin-top:6px; }
+  .box { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:20px 22px; }
+  .big { color:var(--text); font-weight:700; }
+  a { color:var(--yellow); }
+  footer { border-top:1px solid var(--border); margin-top:36px; padding:24px 20px 44px;
+           text-align:center; color:var(--text-dim); font-size:.8rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>PATTI <span class="accent">SHOT</span> プライバシーポリシー</h1>
+  <p>最終更新: 2026年7月26日</p>
+</header>
+
+<main class="wrap">
+
+  <section>
+    <div class="box">
+      <p class="big">PATTI SHOT は、利用者のデータを一切収集しません。</p>
+      <p style="margin-top:10px">
+        撮影した画像・PDF、閲覧しているページの内容やURL、その他いかなる情報も、
+        外部のサーバーに送信することはありません。すべての処理は、利用者のパソコンの中だけで完結します。
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>収集する情報</h2>
+    <p>ありません。個人情報・閲覧履歴・位置情報・認証情報などを収集、保存、送信、販売することは一切ありません。</p>
+  </section>
+
+  <section>
+    <h2>保存されるもの（すべて利用者のパソコン内）</h2>
+    <ul>
+      <li><b>撮影した画像・PDF</b>：ブラウザのダウンロードフォルダ内「PATTI SHOT」フォルダに保存されます</li>
+      <li><b>設定</b>：保存形式（PNG / PDF / 両方）と画質倍率（1x / 2x / 3x）のみを、
+        ブラウザのローカル保存領域に記録します（次回も同じ設定で使うためです）</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>権限を使う理由</h2>
+    <ul>
+      <li><b>debugger</b>：ページ全体を高画質で撮影するために、ブラウザの標準的な撮影機能を利用します。
+        撮影のときだけ使い、終了後はすぐに解除します</li>
+      <li><b>downloads</b>：撮影した画像・PDFをダウンロードフォルダに保存するために使います</li>
+      <li><b>storage</b>：上記の設定（保存形式・画質）を覚えておくために使います</li>
+      <li><b>scripting / activeTab / ホストへのアクセス</b>：撮影ボタンを表示し、
+        ページ全体の高さを測って撮影するために使います。利用者が撮影ボタンを押したページに対してのみ動作します</li>
+      <li><b>offscreen</b>：撮影した画像をつなぎ合わせてPNG / PDFにする処理に使います</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>第三者への提供</h2>
+    <p>ありません。広告・解析（アナリティクス）・トラッキングの類は一切組み込んでいません。</p>
+  </section>
+
+  <section>
+    <h2>お問い合わせ</h2>
+    <p>ご質問は <a href="https://ikemotodir.github.io/contact.html">お問い合わせフォーム</a> からどうぞ。<br>
+      ソースコードは <a href="https://github.com/ikemotodir/patti-shot">GitHub</a> で全公開しています。</p>
+  </section>
+
+</main>
+
+<footer>
+  <p>PATTI SHOT ── 制作：合同会社スタジオパッチ（愛知県一宮市）／法人番号 6180003026597</p>
+  <p><a href="https://ikemotodir.github.io/patti-shot/">← PATTI SHOT のページへ</a></p>
+</footer>
+
+</body>
+</html>
