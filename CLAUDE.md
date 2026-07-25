@@ -10,7 +10,7 @@ FireShot相当のフルページSSツールを **Windows単体exe**（Python + P
 ## 現在のPHASE
 - PHASE 1（撮影エンジン＋自動検証ハーネス）完了。15件×9判定PASS（`test/REPORT.md`）。
 - PHASE 2（フローティングUI / PNG・PDF出力 / 保存処理 / exe化）完了。完了条件1〜8 PASS。exe自己テスト（`PATTI_SHOT_SELFTEST=<url>`）で実Chrome起動→撮影→PNG/PDF保存まで実証。
-- **PHASE 3（自動更新 / release.bat / 配布ページ / 棚トップ更新）完了・池本確認待ち。** v4.1.1公開済み（https://github.com/ikemotodir/patti-shot/releases ・自動更新の再起動まで成立）。配布ページ https://ikemotodir.github.io/patti-shot/ 稼働・棚トップのカードも「公開中」化済み。配布ページは`docs/`（GitHub Pagesの制約でspecの`site/`は`docs/`に読み替え）。
+- **PHASE 3（自動更新 / release.bat / 配布ページ / 棚トップ更新）完了・池本確認待ち。** v4.1.2公開済み（https://github.com/ikemotodir/patti-shot/releases ・自動更新の再起動まで成立・設定パネルからデスクトップショートカット作成可）。配布ページ https://ikemotodir.github.io/patti-shot/ 稼働・棚トップのカードも「公開中」化済み。配布ページは`docs/`（GitHub Pagesの制約でspecの`site/`は`docs/`に読み替え）。
 
 ## PHASE 3の要点・ハマりどころ
 - **SSL**: Python3.13+の`VERIFY_X509_STRICT`が、セキュリティソフトのHTTPS検査CA（basicConstraints非critical）を拒否→更新チェックが黙って失敗する。`update._ssl_context()`でstrictのみ解除（チェーン検証は維持）。v4.0.0はこの修正前のexeだったためリリース削除→v4.0.1で置換済み。
