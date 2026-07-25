@@ -212,11 +212,27 @@ def run(headless: bool = False) -> int:
                 pass
 
         selftest = os.environ.get("PATTI_SHOT_SELFTEST")
+        first = selftest or start_url or START_URL
         try:
-            page.goto(selftest or start_url or START_URL,
-                      wait_until="domcontentloaded", timeout=30000)
+            page.goto(first, wait_until="domcontentloaded", timeout=30000)
         except Exception:
             pass
+        # Never leave the user staring at a blank page: if the first address
+        # could not be reached, fall back to the normal start page. A failed
+        # navigation leaves Chrome on chrome-error://chromewebdata/ (which looks
+        # blank), so that counts as blank too. Retry once: the error page's own
+        # navigation can interrupt the first attempt.
+        if not selftest:
+            for _ in range(2):
+                try:
+                    url = page.url or ""
+                    if not (url in ("", "about:blank", "chrome://newtab/")
+                            or url.startswith("chrome-error://")):
+                        break
+                    page.goto(START_URL, wait_until="domcontentloaded", timeout=30000)
+                    break
+                except Exception:
+                    page.wait_for_timeout(500)
 
         # self-test: capture the loaded page once and exit (verifies the whole
         # bundled pipeline in the exe). Enabled via PATTI_SHOT_SELFTEST=<url>.

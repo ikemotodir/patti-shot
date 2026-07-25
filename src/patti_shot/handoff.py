@@ -22,12 +22,17 @@ import subprocess
 import sys
 import tempfile
 from typing import Optional
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 from . import browser
 
 MUTEX_NAME = "Global\\PATTI_SHOT_SINGLE_INSTANCE"
-_URL_RE = re.compile(r"^https?://[^\s]+$", re.I)
+# a hostname label: ascii letters/digits/hyphen, or an IDN (unicode) label
+_LABEL_RE = re.compile(r"^[^\s.:/\\?#@]+$")
+# the final label must be an ascii TLD, so notes like "ver.4.2.1をリリースした"
+# are not mistaken for a host
+_TLD_RE = re.compile(r"^[a-z]{2,63}$", re.I)
+_IPV4_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
 _mutex_handle = None  # kept alive for the process lifetime
 
 
@@ -42,18 +47,51 @@ def handoff_path() -> str:
 
 
 def normalize(raw: Optional[str]) -> Optional[str]:
-    """Accept 'https://x', 'pattishot://https%3A//x' or 'pattishot://https://x'."""
+    """Return a real http(s) URL, or None.
+
+    Deliberately strict: this also vets whatever happens to be in the clipboard,
+    so ordinary text must never be coerced into a URL. Coercing e.g. a copied
+    bookmarklet ("javascript:...") or a note ("ver.4.2.1をリリースした") produced
+    an unreachable address and left the app sitting on a blank page.
+    """
     if not raw:
         return None
-    s = raw.strip().strip('"')
+    s = raw.strip().strip('"\'')
+    if not s:
+        return None
+    s = s.splitlines()[0].strip()
     for prefix in ("pattishot://", "pattishot:"):
         if s.lower().startswith(prefix):
-            s = s[len(prefix):]
-            s = unquote(s).strip("/") if not s.lower().startswith(("http://", "https://")) else unquote(s)
+            s = unquote(s[len(prefix):]).strip().strip("/")
             break
-    if not s.lower().startswith(("http://", "https://")):
-        s = "https://" + s if "." in s.split("/")[0] else s
-    return s if _URL_RE.match(s) else None
+    if any(c.isspace() for c in s) or any(c in s for c in "'\"<>{}|^`"):
+        return None
+
+    head = s.split("/", 1)[0]
+    if ":" in head:                                  # some scheme is present
+        if not s.lower().startswith(("http://", "https://")):
+            return None                              # javascript:, file:, data: ...
+    else:
+        s = "https://" + s
+
+    try:
+        u = urlparse(s)
+    except Exception:
+        return None
+    if u.scheme not in ("http", "https") or not u.hostname:
+        return None
+
+    host = u.hostname
+    if host == "localhost" or _IPV4_RE.match(host):
+        return u.geturl()
+    labels = host.rstrip(".").split(".")
+    if len(labels) < 2 or not all(labels):
+        return None
+    if not _TLD_RE.match(labels[-1]):                # last label must be a real TLD
+        return None
+    if not all(_LABEL_RE.match(l) for l in labels[:-1]):
+        return None
+    return u.geturl()
 
 
 def url_from_argv(argv=None) -> Optional[str]:
