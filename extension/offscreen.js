@@ -1,43 +1,88 @@
 // PATTI SHOT - image assembly (port of the verified imaging.py / output.py).
 //
-//   * stitch the captured bands into one tall canvas
-//   * trim the trailing uniform-colour band (measurement-overrun insurance)
-//   * blank-band detection (a single colour covering >=99.5% of a 100 CSS px
-//     band, for >=300 CSS px in a row) so a broken capture is reported
-//   * PNG, and PDF split at the 14,400pt page limit on whitespace rows
+// Very long pages are the whole point of this tool, so nothing here may assume
+// the finished image fits in one canvas. Measured: J-PlatPat 商品･役務名検索 is
+// 48,469 CSS px tall, i.e. 96,938 px at 2x -- past Chrome's 65,535 px canvas
+// limit, where OffscreenCanvas silently comes back zero-sized ("The size of
+// OffscreenCanvas is zero").
+//
+// So captured bands are kept as compressed PNG blobs and only the piece being
+// written out is ever decoded onto a canvas:
+//   * PDF - one page per <=14,400pt slice, composed and encoded page by page
+//   * PNG - a single file when it fits, otherwise numbered parts
+// Memory stays bounded however long the page is.
 
-const BAND_PX = 100;          // scan band height, CSS px
+const BAND_PX = 100;            // scan band height, CSS px
 const BLANK_RATIO = 0.995;
-const BLANK_RUN_PX = 300;     // CSS px
-const PDF_PAGE_MAX_CSS = 19000;
+const BLANK_RUN_PX = 300;       // CSS px
+const PDF_PAGE_MAX_CSS = 19000; // 14,400pt limit with margin
 
-let canvas = null, ctx = null, scaleUsed = 2, urls = [];
+// measured on this engine: 2560x65535 encodes fine (167 Mpx), 2560x70000 and
+// 1280x96938 fail -- the binding limit is the 65,535 px side, not the area.
+const MAX_DIM = 65000;          // small margin under 65,535
+const MAX_AREA = 200e6;
+
+let W = 0, H = 0;
+let bands = [];                 // {blob, y, h} in device px
+let urls = [];
 let cleanupTimer = null;
 
 function begin(width, height) {
-  // a cleanup scheduled by the previous capture must not wipe this one's canvas
   if (cleanupTimer) { clearTimeout(cleanupTimer); cleanupTimer = null; }
-  canvas = new OffscreenCanvas(width, height);
-  ctx = canvas.getContext('2d', { willReadFrequently: true });
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, width, height);
-  urls.forEach((u) => URL.revokeObjectURL(u));
+  W = width; H = height;
+  bands = [];
   urls = [];
 }
 
-async function band(dataUrl, y, topCrop, maxRows) {
+async function addBand(dataUrl, y, topCrop, maxRows) {
   const blob = await (await fetch(dataUrl)).blob();
   const bmp = await createImageBitmap(blob);
   const crop = Math.max(0, topCrop || 0);
   let rows = bmp.height - crop;
   if (maxRows != null) rows = Math.min(rows, maxRows);
   if (rows <= 0) { bmp.close(); return { rows: 0 }; }
-  ctx.drawImage(bmp, 0, crop, bmp.width, rows, 0, y, bmp.width, rows);
-  bmp.close();
+
+  if (crop === 0 && rows === bmp.height) {
+    bmp.close();
+    bands.push({ blob, y, h: rows });          // keep the original, no re-encode
+  } else {
+    const c = new OffscreenCanvas(bmp.width, rows);
+    c.getContext('2d').drawImage(bmp, 0, crop, bmp.width, rows, 0, 0, bmp.width, rows);
+    bmp.close();
+    bands.push({ blob: await c.convertToBlob({ type: 'image/png' }), y, h: rows });
+  }
   return { rows };
 }
 
-function rowIsUniform(data, w, row) {
+// compose [y0, y1) of the full image onto a canvas, optionally scaled by `k`
+// (used to fit a very long page into one image instead of splitting it)
+async function compose(y0, y1, k) {
+  k = k || 1;
+  const h = Math.max(1, Math.round((y1 - y0) * k));
+  const w = Math.max(1, Math.round(W * k));
+  const c = new OffscreenCanvas(w, h);
+  const cx = c.getContext('2d', { willReadFrequently: true });
+  cx.imageSmoothingQuality = 'high';
+  cx.fillStyle = '#ffffff';
+  cx.fillRect(0, 0, w, h);
+  for (const b of bands) {
+    if (b.y + b.h <= y0 || b.y >= y1) continue;
+    const bmp = await createImageBitmap(b.blob);
+    const srcY = Math.max(0, y0 - b.y);
+    const dstY = Math.max(0, b.y - y0);
+    const rows = Math.min(b.h - srcY, y1 - (b.y + srcY));
+    if (rows > 0) {
+      cx.drawImage(bmp, 0, srcY, bmp.width, rows,
+                   0, Math.round(dstY * k), w, Math.round(rows * k));
+    }
+    bmp.close();
+  }
+  return { canvas: c, ctx: cx };
+}
+
+function release(canvas) { canvas.width = 1; canvas.height = 1; }
+
+function rowUniform(data, w, row) {
   const o = row * w * 4;
   const r = data[o], g = data[o + 1], b = data[o + 2];
   for (let x = 1; x < w; x++) {
@@ -47,123 +92,151 @@ function rowIsUniform(data, w, row) {
   return true;
 }
 
-// trailing uniform rows -> how many to cut (never more than maxTrim)
-function trailingTrim(h, w, maxTrim) {
-  const keep = 8;
+// how many trailing uniform rows to cut (insurance for measurement overrun)
+async function trailingTrim(maxTrim) {
+  if (!maxTrim || maxTrim <= 0) return 0;
+  const look = Math.min(H, maxTrim + 64);
+  const { canvas, ctx } = await compose(H - look, H);
+  const img = ctx.getImageData(0, 0, W, look).data;
   let uniform = 0;
-  for (let y = h - 1; y >= 0; y--) {
-    const row = ctx.getImageData(0, y, w, 1).data;
-    let same = true;
-    const r = row[0], g = row[1], b = row[2];
-    for (let x = 1; x < w; x++) {
-      const i = x * 4;
-      if (row[i] !== r || row[i + 1] !== g || row[i + 2] !== b) { same = false; break; }
-    }
-    if (!same) break;
+  for (let y = look - 1; y >= 0; y--) {
+    if (!rowUniform(img, W, y)) break;
     uniform++;
-    if (uniform > maxTrim + keep) break;
   }
-  return Math.max(0, Math.min(uniform - keep, maxTrim));
+  release(canvas);
+  return Math.max(0, Math.min(uniform - 8, maxTrim));
 }
 
 // blank runs, measured in CSS px so the threshold is resolution independent
-function blankRuns(h, w, scale) {
+async function blankRuns(height, scale) {
   const bandDev = Math.max(1, Math.round(BAND_PX * scale));
   const runThreshold = BLANK_RUN_PX * scale;
+  const CHUNK = Math.max(bandDev * 4, Math.min(MAX_DIM, Math.floor(MAX_AREA / Math.max(1, W))));
   const runs = [];
   let runStart = null, runEnd = 0;
-  for (let y = 0; y < h; y += bandDev) {
-    const hh = Math.min(bandDev, h - y);
-    const img = ctx.getImageData(0, y, w, hh).data;
-    const counts = new Map();
-    let best = 0;
-    const total = w * hh;
-    const step = Math.max(1, Math.floor(total / 20000));     // sample big bands
-    let seen = 0;
-    for (let p = 0; p < total; p += step) {
-      const i = p * 4;
-      const key = (img[i] << 16) | (img[i + 1] << 8) | img[i + 2];
-      const c = (counts.get(key) || 0) + 1;
-      counts.set(key, c);
-      if (c > best) best = c;
-      seen++;
+
+  for (let base = 0; base < height; base += CHUNK) {
+    const top = base, bottom = Math.min(base + CHUNK, height);
+    const { canvas, ctx } = await compose(top, bottom);
+    for (let y = 0; y < bottom - top; y += bandDev) {
+      const hh = Math.min(bandDev, (bottom - top) - y);
+      if (hh <= 0) break;
+      const img = ctx.getImageData(0, y, W, hh).data;
+      const counts = new Map();
+      let best = 0, seen = 0;
+      const total = W * hh;
+      const step = Math.max(1, Math.floor(total / 20000));
+      for (let p = 0; p < total; p += step) {
+        const i = p * 4;
+        const key = (img[i] << 16) | (img[i + 1] << 8) | img[i + 2];
+        const c = (counts.get(key) || 0) + 1;
+        counts.set(key, c);
+        if (c > best) best = c;
+        seen++;
+      }
+      const isBlank = seen > 0 && best / seen >= BLANK_RATIO;
+      const absY = top + y;
+      if (isBlank) {
+        if (runStart === null) runStart = absY;
+        runEnd = absY + hh;
+      } else {
+        if (runStart !== null && runEnd - runStart >= runThreshold) runs.push([runStart, runEnd]);
+        runStart = null;
+      }
     }
-    const isBlank = seen > 0 && best / seen >= BLANK_RATIO;
-    if (isBlank) {
-      if (runStart === null) runStart = y;
-      runEnd = y + hh;
-    } else {
-      if (runStart !== null && runEnd - runStart >= runThreshold) runs.push([runStart, runEnd]);
-      runStart = null;
-    }
+    release(canvas);
   }
   if (runStart !== null && runEnd - runStart >= runThreshold) runs.push([runStart, runEnd]);
   return runs;
 }
 
-function findSplitRow(target, w, search) {
-  for (let y = target; y > Math.max(1, target - search); y--) {
-    const row = ctx.getImageData(0, y, w, 1).data;
-    let same = true;
-    const r = row[0], g = row[1], b = row[2];
-    for (let x = 1; x < w; x++) {
-      const i = x * 4;
-      if (row[i] !== r || row[i + 1] !== g || row[i + 2] !== b) { same = false; break; }
-    }
-    if (same) return y;
+// a whitespace row near `target`, so a page break never cuts through text
+async function findSplitRow(target, search) {
+  const top = Math.max(0, target - search);
+  const bottom = Math.min(H, target + 1);
+  if (bottom <= top) return target;
+  const { canvas, ctx } = await compose(top, bottom);
+  const img = ctx.getImageData(0, 0, W, bottom - top).data;
+  let found = target;
+  for (let y = (bottom - top) - 1; y >= 0; y--) {
+    if (rowUniform(img, W, y)) { found = top + y; break; }
   }
-  return target;
+  release(canvas);
+  return found;
 }
 
-async function sliceBlob(y0, y1) {
-  const w = canvas.width;
-  const c = new OffscreenCanvas(w, y1 - y0);
-  c.getContext('2d').drawImage(canvas, 0, y0, w, y1 - y0, 0, 0, w, y1 - y0);
-  return await c.convertToBlob({ type: 'image/png' });
+function chunkHeight() {
+  return Math.max(2000, Math.min(MAX_DIM, Math.floor(MAX_AREA / Math.max(1, W))));
+}
+
+async function sliceRanges(limit, searchPx) {
+  const ranges = [];
+  let y = 0;
+  while (y < H) {
+    let end = Math.min(y + limit, H);
+    if (end < H) {
+      const sr = await findSplitRow(end, searchPx);
+      if (sr > y + limit * 0.5) end = sr;
+    }
+    ranges.push([y, end]);
+    y = end;
+  }
+  return ranges;
 }
 
 async function finish(fmt, scale, maxTrim, base) {
-  scaleUsed = scale;
-  const w = canvas.width;
-  const trim = trailingTrim(canvas.height, w, maxTrim || 0);
-  if (trim > 0) {
-    const c = new OffscreenCanvas(w, canvas.height - trim);
-    c.getContext('2d').drawImage(canvas, 0, 0);
-    canvas = c;
-    ctx = canvas.getContext('2d', { willReadFrequently: true });
-  }
-  const runs = blankRuns(canvas.height, w, scale);
-  const files = [];
+  const trim = await trailingTrim(maxTrim);
+  H = Math.max(1, H - trim);
 
+  const runs = await blankRuns(H, scale);
+  const files = [];
+  const limit = chunkHeight();
+  let pngParts = 1;
+
+  let pngScaleUsed = scale;
   if (fmt === 'png' || fmt === 'both') {
-    const blob = await canvas.convertToBlob({ type: 'image/png' });
-    const url = URL.createObjectURL(blob);
-    urls.push(url);
-    files.push({ url, name: base + '.png' });
+    // Spec order for a page too tall for one image: keep one file by scaling it
+    // down, and only split when even 1x would not fit.
+    const fitK = Math.min(1, limit / H, Math.sqrt(MAX_AREA / Math.max(1, W * H)));
+    const canFitOne = H <= limit && W * H <= MAX_AREA;
+    const downscaleOk = fitK * scale >= 1;      // never go below 1x of the page
+
+    if (canFitOne || downscaleOk) {
+      const k = canFitOne ? 1 : fitK;
+      const { canvas } = await compose(0, H, k);
+      const url = URL.createObjectURL(await canvas.convertToBlob({ type: 'image/png' }));
+      release(canvas);
+      urls.push(url);
+      files.push({ url, name: base + '.png' });
+      pngScaleUsed = scale * k;
+    } else {
+      const ranges = await sliceRanges(limit, Math.round(300 * scale));
+      pngParts = ranges.length;
+      let i = 1;
+      for (const [a, b] of ranges) {
+        const { canvas } = await compose(a, b);
+        const url = URL.createObjectURL(await canvas.convertToBlob({ type: 'image/png' }));
+        release(canvas);
+        urls.push(url);
+        files.push({ url, name: `${base}_${i}.png` });
+        i++;
+      }
+    }
   }
 
   if (fmt === 'pdf' || fmt === 'both') {
     const { jsPDF } = self.jspdf;
-    const pageMaxDev = Math.round(PDF_PAGE_MAX_CSS * scale);
-    const pages = [];
-    let y = 0;
-    while (y < canvas.height) {
-      let target = Math.min(y + pageMaxDev, canvas.height);
-      if (target < canvas.height) {
-        target = findSplitRow(target, w, Math.round(200 * scale));
-        if (target <= y) target = Math.min(y + pageMaxDev, canvas.height);
-      }
-      pages.push([y, target]);
-      y = target;
-    }
+    const pageMax = Math.min(Math.round(PDF_PAGE_MAX_CSS * scale), limit);
+    const ranges = await sliceRanges(pageMax, Math.round(200 * scale));
     let pdf = null;
-    for (const [a, b] of pages) {
-      const hCss = (b - a) / scale, wCss = w / scale;
-      const ptW = wCss * 0.75, ptH = hCss * 0.75;      // css px -> pt
-      if (!pdf) pdf = new jsPDF({ unit: 'pt', format: [ptW, ptH],
-                                  orientation: ptW > ptH ? 'l' : 'p' });
+    for (const [a, b] of ranges) {
+      const hCss = (b - a) / scale, wCss = W / scale;
+      const ptW = wCss * 0.75, ptH = hCss * 0.75;   // css px -> pt
+      if (!pdf) pdf = new jsPDF({ unit: 'pt', format: [ptW, ptH], orientation: ptW > ptH ? 'l' : 'p' });
       else pdf.addPage([ptW, ptH], ptW > ptH ? 'l' : 'p');
-      const blob = await sliceBlob(a, b);
+      const { canvas } = await compose(a, b);
+      const blob = await canvas.convertToBlob({ type: 'image/png' });
+      release(canvas);
       const dataUrl = await new Promise((res) => {
         const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob);
       });
@@ -174,7 +247,10 @@ async function finish(fmt, scale, maxTrim, base) {
     files.push({ url, name: base + '.pdf' });
   }
 
-  return { files, blankRuns: runs, width: w, height: canvas.height, trimmed: trim };
+  return {
+    files, blankRuns: runs, width: W, height: H, trimmed: trim, pngParts,
+    pngScale: Math.round(pngScaleUsed * 100) / 100,
+  };
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -182,14 +258,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
       if (msg.cmd === 'begin') { begin(msg.width, msg.height); sendResponse({ ok: true }); }
-      else if (msg.cmd === 'band') sendResponse(await band(msg.dataUrl, msg.y, msg.topCrop, msg.maxRows));
+      else if (msg.cmd === 'band') sendResponse(await addBand(msg.dataUrl, msg.y, msg.topCrop, msg.maxRows));
       else if (msg.cmd === 'finish') sendResponse(await finish(msg.fmt, msg.scale, msg.maxTrim, msg.base));
       else if (msg.cmd === 'cleanup') {
-        // give the downloads time to read the blobs, then release them. The
-        // canvas is left alone: the next capture replaces it in begin().
+        // release the blobs a little later: the downloads still read them
         if (cleanupTimer) clearTimeout(cleanupTimer);
         const mine = urls.slice();
         urls = [];
+        bands = [];
         cleanupTimer = setTimeout(() => {
           mine.forEach((u) => URL.revokeObjectURL(u));
           cleanupTimer = null;

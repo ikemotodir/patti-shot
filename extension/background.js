@@ -121,7 +121,11 @@ async function captureTab(tab, settings) {
       // set the device scale, then screenshot each scrolled viewport (no clip,
       // so we never hit the high-offset raster limit).
       await runInPage(tabId, () => window.__PATTISHOT__.neutralizeFixed());
-      const vp = Math.max(200, Math.round(m.viewport));
+      // Emulate a taller viewport so a long page needs far fewer round-trips
+      // (48,000 px page: ~54 captures at 900 px -> ~14 at 3,600 px). Kept well
+      // under the raster limit: 3,600 x 3 = 10,800 < 16,384.
+      const vp = Math.min(3600, Math.max(900, Math.round(m.viewport)) *
+                          Math.max(1, Math.floor(4 / scale) + 1));
       await sendCmd(tabId, 'Emulation.setDeviceMetricsOverride',
         { width: cssW, height: vp, deviceScaleFactor: scale, mobile: false });
       try {
@@ -174,7 +178,15 @@ async function captureTab(tab, settings) {
     });
   }
   await askOffscreen({ cmd: 'cleanup' });
-  return { ok: true, files, bands, split, blankRuns: out.blankRuns };
+  return {
+    ok: true, files, bands, split, blankRuns: out.blankRuns,
+    // be explicit when a very long page forced a compromise on the PNG
+    note: (out.pngParts > 1)
+      ? `※とても長いページのため、PNGは${out.pngParts}枚に分けて保存しました（PDFは1つです）`
+      : (out.pngScale && out.pngScale < scale
+         ? `※とても長いページのため、PNGは1枚に収まるよう${out.pngScale}倍で保存しました（PDFは${scale}倍のままです）`
+         : ''),
+  };
 }
 
 function basename(url) {

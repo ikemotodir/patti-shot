@@ -116,7 +116,8 @@
         fab.style.opacity = '1';
         const err = chrome.runtime.lastError;
         if (err || !res) { showToast('撮影できませんでした：' + (err ? err.message : '応答なし'), true); return; }
-        if (res.ok) showToast('保存しました:\n' + (res.files || []).join('\n'));
+        if (res.ok) showToast('保存しました:\n' + (res.files || []).join('\n')
+                              + (res.note ? '\n' + res.note : ''));
         else showToast('撮影できませんでした：\n' + (res.error || '不明なエラー'), true);
       });
     }
