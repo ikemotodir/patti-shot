@@ -1,3 +1,3 @@
 """PATTI SHOT v4.1 - full-page screenshot engine (STUDIO PATTI)."""
 
-__version__ = "4.2.2"
+__version__ = "4.2.3"

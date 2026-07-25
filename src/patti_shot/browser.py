@@ -30,19 +30,25 @@ class LaunchResult:
 
 def launch(pw: Playwright, profile_dir: str, headless: bool = False,
            viewport: Optional[dict] = None, prefer_chrome: bool = True) -> LaunchResult:
+    # CAREFUL: in Playwright Python, viewport=None means "not specified", so the
+    # page gets the DEFAULT 1280x720 emulated viewport that never follows the
+    # window. Measured: snapping the window to half the screen left the page at
+    # 1280x720, so the bottom-right capture button sat outside the visible window
+    # and the user could not see it. no_viewport=True is what makes the page
+    # track the real window (measured: 1536 -> 754 on a half-screen snap).
     common = dict(
         user_data_dir=profile_dir,
         headless=headless,
-        viewport=viewport,          # None => use real window size (headed)
-        # --start-maximized keeps the window inside the screen's work area.
-        # Without it Chrome can restore a window taller than the screen, which
-        # pushes the bottom-right capture button off-screen (measured: fab
-        # bottom at 940 on a 720-tall work area) so the user cannot see it.
+        # --start-maximized also keeps the window inside the screen work area.
         args=["--hide-crash-restore-bubble", "--no-first-run",
               "--no-default-browser-check"]
              + ([] if headless else ["--start-maximized"]),
         ignore_default_args=["--enable-automation"],
     )
+    if viewport is None:
+        common["no_viewport"] = True
+    else:
+        common["viewport"] = viewport
     last_err = None
     if prefer_chrome:
         try:
