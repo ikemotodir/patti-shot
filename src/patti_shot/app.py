@@ -14,7 +14,7 @@ import threading
 
 from playwright.sync_api import sync_playwright
 
-from . import __version__, browser, engine, output, update, util
+from . import __version__, browser, engine, handoff, output, update, util
 from .ui import FLOATING_UI_JS
 
 START_URL = "https://www.google.com/"
@@ -89,6 +89,23 @@ _GET_SET = ("() => { const a = document.documentElement.getAttribute('data-patti
             " if (a) document.documentElement.removeAttribute('data-patti-shot-settings'); return a; }")
 _GET_SHORTCUT = ("() => { const a = document.documentElement.getAttribute('data-patti-shot-shortcut');"
                  " if (a) document.documentElement.removeAttribute('data-patti-shot-shortcut'); return a; }")
+_GET_ONECLICK = ("() => { const a = document.documentElement.getAttribute('data-patti-shot-oneclick');"
+                 " if (a) document.documentElement.removeAttribute('data-patti-shot-oneclick'); return a; }")
+
+
+def do_setup_oneclick() -> dict:
+    """Register the pattishot: protocol and put the bookmarklet on the clipboard
+    so the user can add a one-click 'capture this page' button to their normal
+    browser's bookmarks bar."""
+    exe = update.target_exe_path()
+    if not exe:
+        return {"ok": False, "error": "この機能は PATTI_SHOT.exe から起動したときに使えます"}
+    try:
+        handoff.register_protocol(exe)
+        handoff.set_clipboard(handoff.BOOKMARKLET)
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": f"設定できませんでした: {e}"}
 
 
 def do_make_shortcut() -> dict:
@@ -129,6 +146,15 @@ def run(headless: bool = False) -> int:
         print(f"UPDATE_TEST: current={__version__} no-update", flush=True)
         return 0
 
+    # Handoff: open the page the user was looking at (command line / clipboard).
+    # If PATTI SHOT is already running, give it the URL and exit instead of
+    # opening a second window.
+    start_url = handoff.startup_url()
+    if not handoff.claim_single_instance():
+        if start_url:
+            handoff.send_to_running(start_url)
+        return 0
+
     # record every normal boot up-front (before any network/browser work) so a
     # post-update relaunch is unambiguously observable in update.log.
     update.log_boot(__version__)
@@ -152,7 +178,8 @@ def run(headless: bool = False) -> int:
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         selftest = os.environ.get("PATTI_SHOT_SELFTEST")
         try:
-            page.goto(selftest or START_URL, wait_until="domcontentloaded", timeout=30000)
+            page.goto(selftest or start_url or START_URL,
+                      wait_until="domcontentloaded", timeout=30000)
         except Exception:
             pass
 
@@ -173,6 +200,17 @@ def run(headless: bool = False) -> int:
                 pages = ctx.pages
                 if not pages:
                     break
+                # a URL handed over by another launch (bookmarklet / shortcut /
+                # second double-click) opens here as a new tab
+                sent = handoff.take_handoff()
+                if sent:
+                    try:
+                        tab = ctx.new_page()
+                        tab.goto(sent, wait_until="domcontentloaded", timeout=30000)
+                        tab.bring_to_front()
+                    except Exception:
+                        pass
+                    pages = ctx.pages
                 for pg in list(pages):
                     try:
                         # announce a pending update to the injected UI
@@ -212,6 +250,11 @@ def run(headless: bool = False) -> int:
                             pg.evaluate(
                                 "(r) => document.documentElement.setAttribute("
                                 "'data-patti-shot-shortcut-result', r)", json.dumps(res))
+                        if pg.evaluate(_GET_ONECLICK):
+                            res = do_setup_oneclick()
+                            pg.evaluate(
+                                "(r) => document.documentElement.setAttribute("
+                                "'data-patti-shot-oneclick-result', r)", json.dumps(res))
                         req = pg.evaluate(_GET_REQ)
                         if req:
                             data = json.loads(req)

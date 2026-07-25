@@ -58,7 +58,11 @@ FLOATING_UI_JS = r"""
       "<button id='patti-shot-mkicon' style='display:block;width:100%;margin-top:12px;" +
       "padding:8px 10px;border:1.5px solid " + PINK + ";border-radius:10px;background:#fff;" +
       "color:" + PINK + ";font:700 12px sans-serif;cursor:pointer'>" +
-      "🖥 デスクトップにショートカット作成</button>";
+      "🖥 デスクトップにショートカット作成</button>" +
+      "<button id='patti-shot-oneclick' style='display:block;width:100%;margin-top:8px;" +
+      "padding:8px 10px;border:1.5px solid " + PINK + ";border-radius:10px;background:#fff;" +
+      "color:" + PINK + ";font:700 12px sans-serif;cursor:pointer'>" +
+      "🔗 普段のブラウザから1クリックで開く設定</button>";
     panel.querySelectorAll('*').forEach(n => n.setAttribute('data-patti-shot-ui', '1'));
     document.body.appendChild(panel);
 
@@ -171,6 +175,39 @@ FLOATING_UI_JS = r"""
         let res; try { res = JSON.parse(raw); } catch (e) { res = { ok: false, error: String(e) }; }
         if (res.ok) showToast('デスクトップに「PATTI SHOT」ショートカットを作成しました');
         else showToast(res.error || 'ショートカットを作成できませんでした', true);
+      }, 300);
+    });
+
+    // one-click handoff setup: registers pattishot: and copies the bookmarklet
+    const oneclick = panel.querySelector('#patti-shot-oneclick');
+    oneclick.addEventListener('click', () => {
+      oneclick.disabled = true;
+      oneclick.textContent = '設定中…';
+      de.removeAttribute('data-patti-shot-oneclick-result');
+      de.setAttribute('data-patti-shot-oneclick', '1');
+      let n = 0;
+      const poll = setInterval(() => {
+        const raw = de.getAttribute('data-patti-shot-oneclick-result');
+        if (!raw) {
+          if (++n > 100) {
+            clearInterval(poll);
+            oneclick.disabled = false;
+            oneclick.textContent = '🔗 普段のブラウザから1クリックで開く設定';
+            showToast('応答がありません。もう一度お試しください。', true);
+          }
+          return;
+        }
+        clearInterval(poll);
+        de.removeAttribute('data-patti-shot-oneclick-result');
+        oneclick.disabled = false;
+        oneclick.textContent = '🔗 普段のブラウザから1クリックで開く設定';
+        let res; try { res = JSON.parse(raw); } catch (e) { res = { ok: false, error: String(e) }; }
+        if (res.ok) showToast(
+          '準備できました！\n' +
+          '① 普段のChromeでブックマークバーを右クリック →「ページを追加」\n' +
+          '② 名前は「PATTI SHOTで撮る」、URL欄に Ctrl+V（コピー済みです）\n' +
+          '→ 撮りたいページでそのブックマークを押すだけで、ここに開きます');
+        else showToast(res.error || '設定できませんでした', true);
       }, 300);
     });
 
