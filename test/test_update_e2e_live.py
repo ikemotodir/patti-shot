@@ -89,12 +89,19 @@ def main():
         n0 = len(open(logp, encoding="utf-8", errors="replace").read().splitlines()) \
             if os.path.exists(logp) else 0
         print("[3] launch OLD exe (real check -> download -> replace -> relaunch) ...", flush=True)
+        # the shipped exe is windowed (--noconsole) so it has no stdout: it
+        # reports through PATTI_SHOT_RESULT_FILE instead.
+        resfile = os.path.join(WORK, "result_old.txt")
+        if os.path.exists(resfile):
+            os.remove(resfile)
         env = dict(os.environ)
-        env["PATTI_SHOT_UPDATE_TEST"] = "1"   # relaunched exe inherits this -> exits fast, no window
+        env["PATTI_SHOT_UPDATE_TEST"] = "1"   # applies then exits, no window
+        env["PATTI_SHOT_RESULT_FILE"] = resfile
         r = subprocess.run([EXE], env=env, capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=600)
-        out = (r.stdout or "").strip()
-        print("    old exe stdout:", out, flush=True)
+        out = ((open(resfile, encoding="utf-8").read() if os.path.exists(resfile)
+                else "") + (r.stdout or "")).strip()
+        print("    old exe result:", out, flush=True)
         checks["#1-3 検知/DL/置換要求"] = f"found={TO_TAG}" in out and "applied=True" in out
 
         print("[4] wait for replace + auto-relaunch (new-version startup in update.log) ...", flush=True)
@@ -116,16 +123,23 @@ def main():
         print("[5] capture with the UPDATED exe (#7) ...", flush=True)
         shots = os.path.join(WORK, "shots")
         shutil.rmtree(shots, ignore_errors=True)
+        res2 = os.path.join(WORK, "result_shot.txt")
+        if os.path.exists(res2):
+            os.remove(res2)
         env2 = dict(os.environ)
         env2["PATTI_SHOT_SELFTEST"] = "https://example.com/"
         env2["PATTI_SHOT_OUT_DIR"] = shots
         env2["PATTI_SHOT_NO_OPEN"] = "1"
+        env2["PATTI_SHOT_RESULT_FILE"] = res2
         r2 = subprocess.run([EXE], env=env2, capture_output=True, text=True,
                             encoding="utf-8", errors="replace", timeout=300)
+        out2 = ((open(res2, encoding="utf-8").read() if os.path.exists(res2) else "")
+                + (r2.stdout or ""))
         pngs = glob.glob(os.path.join(shots, "*.png"))
         pdfs = glob.glob(os.path.join(shots, "*.pdf"))
-        checks["#7 更新後の撮影"] = '"ok": true' in (r2.stdout or "") and len(pngs) == 1 and len(pdfs) == 1
-        print(f"    selftest ok={'\"ok\": true' in (r2.stdout or '')} png={len(pngs)} pdf={len(pdfs)}", flush=True)
+        shot_ok = '"ok": true' in out2
+        checks["#7 更新後の撮影"] = shot_ok and len(pngs) == 1 and len(pdfs) == 1
+        print(f"    selftest ok={shot_ok} png={len(pngs)} pdf={len(pdfs)}", flush=True)
 
         print("[6] leftovers / processes / cookie ...", flush=True)
         tmp = os.environ["TEMP"]

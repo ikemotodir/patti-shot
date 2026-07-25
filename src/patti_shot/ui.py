@@ -72,7 +72,8 @@ FLOATING_UI_JS = r"""
       color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
       textAlign: 'center', font: '700 11px/1.2 sans-serif',
       boxShadow: '0 4px 16px rgba(0,0,0,.3)', cursor: 'pointer', userSelect: 'none',
-    }, { id: 'patti-shot-fab', title: 'クリックで撮影 / 長押しで設定' });
+    }, { id: 'patti-shot-fab',
+         title: 'クリックで撮影（Ctrl+Shift+S / Alt+S でも撮れます）／長押しで設定' });
     fab.textContent = 'PATTI SHOT';
 
     const gear = el('div', {
@@ -235,6 +236,44 @@ FLOATING_UI_JS = r"""
       }, 200);
     };
     fab.addEventListener('click', shoot);
+
+    // Keyboard shortcut: capture without hunting for the button. Works even if
+    // the window is oddly sized or the page hides things.
+    const onKey = (e) => {
+      const k = (e.key || '').toLowerCase();
+      if ((e.ctrlKey && e.shiftKey && k === 's') || (e.altKey && k === 's')) {
+        e.preventDefault();
+        e.stopPropagation();
+        shoot();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    document.addEventListener('keydown', onKey, true);
+
+    // Keep the UI usable no matter how the window is sized: if the viewport is
+    // short, shrink and lift the button so it can never end up out of reach.
+    const fit = () => {
+      const short = window.innerHeight < 560;
+      const small = window.innerWidth < 480;
+      const size = (short || small) ? 58 : 84;
+      fab.style.width = fab.style.height = size + 'px';
+      fab.style.font = (short || small) ? '700 9px/1.2 sans-serif' : '700 11px/1.2 sans-serif';
+      fab.style.bottom = (short ? 8 : 20) + 'px';
+      gear.style.bottom = (short ? 8 + size + 4 : 92) + 'px';
+      gear.style.right = (short ? 8 : 20) + 'px';
+      fab.style.right = (short ? 8 : 20) + 'px';
+      panel.style.bottom = toast.style.bottom = (short ? 8 + size + 40 : 116) + 'px';
+    };
+    fit();
+    window.addEventListener('resize', fit);
+
+    // Some pages (SPAs) rebuild the DOM and drop our nodes -- put them back.
+    // One shared interval, so repeated re-mounts never stack timers up.
+    clearInterval(window.__PATTISHOT_KEEPALIVE__);
+    window.__PATTISHOT_KEEPALIVE__ = setInterval(() => {
+      if (document.body && !document.getElementById('patti-shot-fab')) build();
+    }, 1500);
+
     applySettings();
   }
 

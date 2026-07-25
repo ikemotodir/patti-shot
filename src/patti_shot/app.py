@@ -20,6 +20,27 @@ from .ui import FLOATING_UI_JS
 START_URL = "https://www.google.com/"
 
 
+def _emit(line: str) -> None:
+    """Machine-readable output for the verification harness.
+
+    The shipped exe is built --noconsole (no black console window), so there is
+    no stdout to print to: results also go to PATTI_SHOT_RESULT_FILE. Printing
+    is best-effort and must never raise (sys.stdout is None in a windowed exe).
+    """
+    try:
+        if sys.stdout is not None:
+            print(line, flush=True)
+    except Exception:
+        pass
+    path = os.environ.get("PATTI_SHOT_RESULT_FILE")
+    if path:
+        try:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        except Exception:
+            pass
+
+
 def _settings_path() -> str:
     base = os.path.dirname(browser.default_profile_dir())  # ...\PATTI SHOT
     return os.path.join(base, "settings.json")
@@ -139,11 +160,11 @@ def run(headless: bool = False) -> int:
             ok = err is None
             _mark(f"current={__version__} found={info['tag']} applied={ok}"
                   + (f" err={err}" if err else ""))
-            print(f"UPDATE_TEST: current={__version__} found={info['tag']} "
-                  f"applied={ok}" + (f" err={err}" if err else ""), flush=True)
+            _emit(f"UPDATE_TEST: current={__version__} found={info['tag']} "
+                  f"applied={ok}" + (f" err={err}" if err else ""))
             return 0 if ok else 1
         _mark(f"current={__version__} no-update")
-        print(f"UPDATE_TEST: current={__version__} no-update", flush=True)
+        _emit(f"UPDATE_TEST: current={__version__} no-update")
         return 0
 
     # Handoff: open the page the user was looking at (command line / clipboard).
@@ -176,6 +197,20 @@ def run(headless: bool = False) -> int:
         ctx.add_init_script(FLOATING_UI_JS)
 
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
+
+        # Guarantee the window fits the screen. A remembered window taller than
+        # the work area pushes the bottom-right capture button off-screen, so
+        # the user cannot see it (measured: fab bottom 940 vs 720 of screen).
+        if not headless:
+            try:
+                c = ctx.new_cdp_session(page)
+                wid = c.send("Browser.getWindowForTarget")["windowId"]
+                c.send("Browser.setWindowBounds",
+                       {"windowId": wid, "bounds": {"windowState": "maximized"}})
+                c.detach()
+            except Exception:
+                pass
+
         selftest = os.environ.get("PATTI_SHOT_SELFTEST")
         try:
             page.goto(selftest or start_url or START_URL,
@@ -188,7 +223,7 @@ def run(headless: bool = False) -> int:
         if selftest:
             page.wait_for_timeout(800)
             res = do_capture(page, settings, lr.channel)
-            print("SELFTEST:", json.dumps(res, ensure_ascii=False), flush=True)
+            _emit("SELFTEST: " + json.dumps(res, ensure_ascii=False))
             ctx.close()
             return 0 if res.get("ok") else 1
 

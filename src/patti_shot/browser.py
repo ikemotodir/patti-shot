@@ -34,8 +34,13 @@ def launch(pw: Playwright, profile_dir: str, headless: bool = False,
         user_data_dir=profile_dir,
         headless=headless,
         viewport=viewport,          # None => use real window size (headed)
+        # --start-maximized keeps the window inside the screen's work area.
+        # Without it Chrome can restore a window taller than the screen, which
+        # pushes the bottom-right capture button off-screen (measured: fab
+        # bottom at 940 on a 720-tall work area) so the user cannot see it.
         args=["--hide-crash-restore-bubble", "--no-first-run",
-              "--no-default-browser-check"],
+              "--no-default-browser-check"]
+             + ([] if headless else ["--start-maximized"]),
         ignore_default_args=["--enable-automation"],
     )
     last_err = None

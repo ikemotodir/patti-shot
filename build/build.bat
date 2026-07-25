@@ -12,7 +12,10 @@ rem    NOTE: --icon resolves relative to the SPEC dir (build\), so no build\ pre
 set ICON=
 if exist "build\patti_shot.ico" set ICON=--icon patti_shot.ico
 echo Building PATTI_SHOT.exe ...
-"%PY%" -m PyInstaller --noconfirm --onefile --name PATTI_SHOT %ICON% --paths src --collect-all playwright --hidden-import patti_shot --distpath build\dist --workpath build\work --specpath build build\entry.py
+rem -- --noconsole: no black console window behind the app (users found it alarming).
+rem    NOTE: with it, sys.stdout is None -- app.py guards prints and writes machine
+rem    readable results to PATTI_SHOT_RESULT_FILE for the tests.
+"%PY%" -m PyInstaller --noconfirm --onefile --noconsole --name PATTI_SHOT %ICON% --paths src --collect-all playwright --hidden-import patti_shot --distpath build\dist --workpath build\work --specpath build build\entry.py
 if errorlevel 1 (
   echo [ERROR] build failed
   exit /b 1
