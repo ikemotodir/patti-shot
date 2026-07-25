@@ -36,6 +36,11 @@ FireShot相当のフルページSSツールを **Windows単体exe**（Python + P
 `pattishot:`プロトコル登録＋ブックマークレット（普段のChromeから1クリック）／クリップボードのURL自動オープン（設定不要）／コマンドライン引数／**単一起動ガード**（2回目起動はURLを`open_url.txt`で受け渡し、起動中のウィンドウに新タブで開く）。検証は`test/test_handoff.py`＋実exe（URL引数・二重起動なし・受け渡し消費・クリップボードで実際にページが開くことを確認）。
 **ログイン手間は消せない**（上記の通り技術的に不可）。PATTI SHOTのプロファイルは永続なので「初回だけログイン」で以降は保持、と案内する方針。
 
+## 実機で出た不具合（v4.2.1・2026-07-25）
+- **exeは必ず`--noconsole`でビルド**：黒いコンソール窓が起動後も残り、利用者が驚く。ただし windowed だと`sys.stdout`がNone → `app._emit()`でprintをガードし、結果は`PATTI_SHOT_RESULT_FILE`にも書く（exeを直接叩く`test_update_e2e_live.py`はこのファイルを読む。ソース実行の`test_update_safety.py`は従来どおりstdoutでOK）。
+- **ピンクのボタンが見えない問題の真因＝ウィンドウが画面より縦に大きい**。描画自体は正常で、`position:fixed`のボタンが**物理的に画面外**にあった（実測：ボタン下端940 vs 作業領域720）。→ 起動時にCDP `Browser.setWindowBounds` で**最大化**（`--start-maximized`だけでは効かない場合がある）。検証は`GetClientRect`+`ClientToScreen`で client bottom == work area bottom を確認する方式（ウィンドウ枠は最大化時に画面外へ数px出るのが正常なので、外枠矩形で判定してはいけない）。
+- **保険**：`Ctrl+Shift+S`/`Alt+S`ショートカット、短いビューポートではボタン縮小＋持ち上げ、SPAにDOMごと消された場合の自動再マウント（1.5s間隔・タイマーは1本に集約）。検証＝`test/test_ui_robust.py`。
+
 ## PHASE 2の要点・ハマりどころ
 - UI⇔Python連携は**binding不可**（sync Playwrightはbindingハンドラ内で長時間のネスト呼び出しができずデッドロック）。→ FABは`<html>`属性`data-patti-shot-request`に要求を書き、`app.run`のポーリングループが撮影を実行して`data-patti-shot-result`で返す方式。進捗は`document.title`（撮影に写らない）で表示。
 - **メモリリーク（重要）**：撮影ごとに巨大配列を確保→解放するとPlaywrightの割当と断片化し解放領域が再利用されず、1回~90MB増加（Python3.14/numpy2.5.1）。→ `engine.capture(reuse_buffer=True)`で**出力バッファを使い回し**（アプリは撮影結果を即保存するので安全）。ただし複数結果を同時保持するテストは`reuse_buffer=False`（既定）で独立配列を使う。app.do_captureはTrue。連続10回で+119MB（合格域）。
