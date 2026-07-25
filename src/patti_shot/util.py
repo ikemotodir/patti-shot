@@ -54,3 +54,48 @@ def default_save_dir() -> str:
     d = os.path.join(downloads, "PATTI SHOT")
     os.makedirs(d, exist_ok=True)
     return d
+
+
+def desktop_dir() -> str:
+    """The user's real Desktop folder (handles OneDrive-redirected desktops via
+    the shell API). PATTI_SHOT_DESKTOP_DIR overrides for tests."""
+    override = os.environ.get("PATTI_SHOT_DESKTOP_DIR")
+    if override:
+        os.makedirs(override, exist_ok=True)
+        return override
+    import subprocess
+    try:
+        r = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "[Environment]::GetFolderPath('Desktop')"],
+            capture_output=True, text=True, timeout=20,
+            creationflags=subprocess.CREATE_NO_WINDOW)
+        d = (r.stdout or "").strip()
+        if d and os.path.isdir(d):
+            return d
+    except Exception:
+        pass
+    return os.path.join(os.path.expanduser("~"), "Desktop")
+
+
+def create_desktop_shortcut(target: str) -> str:
+    """Create (or refresh) a 'PATTI SHOT.lnk' on the Desktop pointing at
+    ``target``. Returns the .lnk path; raises on failure. The exe carries its
+    own embedded icon, so the shortcut gets the PATTI SHOT icon automatically."""
+    import subprocess
+    lnk = os.path.join(desktop_dir(), "PATTI SHOT.lnk")
+
+    def q(s: str) -> str:  # single-quote for PowerShell (' -> '')
+        return "'" + s.replace("'", "''") + "'"
+
+    ps = ("$s=(New-Object -ComObject WScript.Shell).CreateShortcut(" + q(lnk) + "); "
+          "$s.TargetPath=" + q(target) + "; "
+          "$s.WorkingDirectory=" + q(os.path.dirname(target) or ".") + "; "
+          "$s.Description='PATTI SHOT - Webページを丸ごと1枚に撮る'; "
+          "$s.Save()")
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                       capture_output=True, text=True, timeout=30,
+                       creationflags=subprocess.CREATE_NO_WINDOW)
+    if r.returncode != 0 or not os.path.exists(lnk):
+        raise RuntimeError((r.stderr or r.stdout or "shortcut creation failed").strip()[:200])
+    return lnk

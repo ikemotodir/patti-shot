@@ -43,8 +43,10 @@ FLOATING_UI_JS = r"""
       boxShadow: '0 8px 30px rgba(0,0,0,.25)', padding: '14px 16px',
       font: '13px/1.5 sans-serif', display: 'none',
     }, { id: 'patti-shot-panel' });
+    const VER = window.__PATTISHOT_VERSION__ || '';
     panel.innerHTML =
-      "<div style='font-weight:700;margin-bottom:8px;color:" + PINK + "'>PATTI SHOT 設定</div>" +
+      "<div style='font-weight:700;margin-bottom:8px;color:" + PINK + "' id='patti-shot-ver'>PATTI SHOT 設定" +
+      (VER ? " <span style='font-weight:500;color:#888'>v" + VER + "</span>" : "") + "</div>" +
       "<div style='margin-bottom:6px'>保存形式</div>" +
       "<label style='margin-right:10px'><input type='radio' name='ps-fmt' value='png'> PNG</label>" +
       "<label style='margin-right:10px'><input type='radio' name='ps-fmt' value='pdf'> PDF</label>" +
@@ -52,7 +54,11 @@ FLOATING_UI_JS = r"""
       "<div style='margin:10px 0 6px'>画質(倍率)</div>" +
       "<label style='margin-right:10px'><input type='radio' name='ps-scale' value='1'> 1x</label>" +
       "<label style='margin-right:10px'><input type='radio' name='ps-scale' value='2'> 2x</label>" +
-      "<label><input type='radio' name='ps-scale' value='3'> 3x</label>";
+      "<label><input type='radio' name='ps-scale' value='3'> 3x</label>" +
+      "<button id='patti-shot-mkicon' style='display:block;width:100%;margin-top:12px;" +
+      "padding:8px 10px;border:1.5px solid " + PINK + ";border-radius:10px;background:#fff;" +
+      "color:" + PINK + ";font:700 12px sans-serif;cursor:pointer'>" +
+      "🖥 デスクトップにショートカット作成</button>";
     panel.querySelectorAll('*').forEach(n => n.setAttribute('data-patti-shot-ui', '1'));
     document.body.appendChild(panel);
 
@@ -105,6 +111,13 @@ FLOATING_UI_JS = r"""
           upd.textContent = '⬆ 新しいバージョン ' + tag + ' があります／更新する';
           upd.style.display = 'block';
         }
+      },
+      notify(msg, isErr) {
+        showToast(msg, !!isErr);
+      },
+      resetUpdate() {
+        upd.style.display = 'none';
+        upd.style.pointerEvents = 'auto';
       }
     };
 
@@ -130,6 +143,35 @@ FLOATING_UI_JS = r"""
       if (e.target.name === 'ps-fmt') settings.fmt = e.target.value;
       if (e.target.name === 'ps-scale') settings.scale = parseInt(e.target.value, 10);
       de.setAttribute('data-patti-shot-settings', JSON.stringify(settings));
+    });
+
+    // desktop-shortcut button: request via attribute, app replies with result
+    const mkicon = panel.querySelector('#patti-shot-mkicon');
+    mkicon.addEventListener('click', () => {
+      mkicon.disabled = true;
+      mkicon.textContent = '作成中…';
+      de.removeAttribute('data-patti-shot-shortcut-result');
+      de.setAttribute('data-patti-shot-shortcut', '1');
+      let n = 0;
+      const poll = setInterval(() => {
+        const raw = de.getAttribute('data-patti-shot-shortcut-result');
+        if (!raw) {
+          if (++n > 100) {  // ~30s safety stop
+            clearInterval(poll);
+            mkicon.disabled = false;
+            mkicon.textContent = '🖥 デスクトップにショートカット作成';
+            showToast('応答がありません。もう一度お試しください。', true);
+          }
+          return;
+        }
+        clearInterval(poll);
+        de.removeAttribute('data-patti-shot-shortcut-result');
+        mkicon.disabled = false;
+        mkicon.textContent = '🖥 デスクトップにショートカット作成';
+        let res; try { res = JSON.parse(raw); } catch (e) { res = { ok: false, error: String(e) }; }
+        if (res.ok) showToast('デスクトップに「PATTI SHOT」ショートカットを作成しました');
+        else showToast(res.error || 'ショートカットを作成できませんでした', true);
+      }, 300);
     });
 
     let pressT = null;

@@ -87,6 +87,20 @@ _GET_REQ = ("() => { const a = document.documentElement.getAttribute('data-patti
             " if (a) document.documentElement.removeAttribute('data-patti-shot-request'); return a; }")
 _GET_SET = ("() => { const a = document.documentElement.getAttribute('data-patti-shot-settings');"
             " if (a) document.documentElement.removeAttribute('data-patti-shot-settings'); return a; }")
+_GET_SHORTCUT = ("() => { const a = document.documentElement.getAttribute('data-patti-shot-shortcut');"
+                 " if (a) document.documentElement.removeAttribute('data-patti-shot-shortcut'); return a; }")
+
+
+def do_make_shortcut() -> dict:
+    """Create the Desktop shortcut to this exe (settings-panel button)."""
+    target = update.target_exe_path()
+    if not target:
+        return {"ok": False, "error": "この機能は PATTI_SHOT.exe から起動したときに使えます"}
+    try:
+        lnk = util.create_desktop_shortcut(target)
+        return {"ok": True, "path": lnk}
+    except Exception as e:
+        return {"ok": False, "error": f"ショートカットを作成できませんでした: {e}"}
 
 
 def run(headless: bool = False) -> int:
@@ -193,6 +207,11 @@ def run(headless: bool = False) -> int:
                             settings = {"fmt": json.loads(s).get("fmt", "both"),
                                         "scale": int(json.loads(s).get("scale", 2))}
                             save_settings(settings)
+                        if pg.evaluate(_GET_SHORTCUT):
+                            res = do_make_shortcut()
+                            pg.evaluate(
+                                "(r) => document.documentElement.setAttribute("
+                                "'data-patti-shot-shortcut-result', r)", json.dumps(res))
                         req = pg.evaluate(_GET_REQ)
                         if req:
                             data = json.loads(req)
