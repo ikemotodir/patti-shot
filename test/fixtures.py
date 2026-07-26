@@ -161,7 +161,28 @@ def dark() -> str:
     return _HEAD.format(lang="en", title="dark", css=css) + body + "</body></html>"
 
 
+def ruler() -> str:
+    """A tall page where every 100px band carries a colour that encodes its
+    index. The stitched capture can then be decoded back to a sequence of
+    indices, which proves - with no OCR and no guessing - that the output is in
+    page order with nothing repeated or skipped."""
+    n = 300                                    # 300 x 100px = 30,000 px tall
+    css = ("body{margin:0;font:700 34px/100px sans-serif;color:#fff}"
+           ".b{height:100px;padding-left:24px;box-sizing:border-box}")
+    rows = []
+    for i in range(n):
+        # index -> colour, spread so neighbours differ a lot and each is unique
+        r = 20 + (i // 16)          # unique (r,g) pair for every index
+        g = 20 + (i % 16) * 14
+        b = 90
+        rows.append(f"<div class='b' style='background:rgb({r},{g},{b})' "
+                    f"data-i='{i}'>BAND {i:04d}</div>")
+    return (_HEAD.format(lang="en", title="ruler", css=css) + "".join(rows)
+            + "</body></html>")
+
+
 FIXTURES = {
+    "ruler": ruler,
     "short": short, "long": long_page, "lazy": lazy, "fixedheader": fixed_header,
     "innerscroll": inner_scroll, "infinite": infinite, "wide": wide,
     "japanese": japanese, "tables": tables, "iframe": iframe, "dark": dark,

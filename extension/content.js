@@ -114,6 +114,12 @@
         busy = false;
         fab.textContent = 'PATTI SHOT';
         fab.style.opacity = '1';
+        // diagnostics for the harness: a DOM attribute crosses the isolated
+        // world boundary, a window property does not
+        try {
+          document.documentElement.setAttribute(
+            'data-patti-shot-last', JSON.stringify(res || {}).slice(0, 60000));
+        } catch (e) {}
         const err = chrome.runtime.lastError;
         if (err || !res) { showToast('撮影できませんでした：' + (err ? err.message : '応答なし'), true); return; }
         if (res.ok) showToast('保存しました (v' + ver + '):\n' + (res.files || []).join('\n')

@@ -105,15 +105,21 @@ async function captureTab(tab, settings) {
 
   const split = cssH * scale > SINGLE_SHOT_MAX_DEVICE;
   let bands = 0;
+  const trace = [];
   let finalCssH = cssH;              // may change under an emulated viewport
   let contentH = m.contentHeight;
   try {
     if (!split) {
       await askOffscreen({ cmd: 'begin', width: cssW * scale, height: cssH * scale });
       progress(tabId, 0, 1);
+      // clip.scale multiplies the DISPLAY's device pixel ratio, so on a 125%
+      // display "2x" silently produced 2.5x (measured: 14,772 px for a 5,923 px
+      // page). Divide it out so 2x means exactly 2x everywhere, which also keeps
+      // very long pages from hitting the canvas limit sooner than expected.
+      const dpr = await runInPage(tabId, () => window.devicePixelRatio || 1);
       const shot = await sendCmd(tabId, 'Page.captureScreenshot', {
         format: 'png', captureBeyondViewport: true, fromSurface: true,
-        clip: { x: 0, y: 0, width: cssW, height: cssH, scale },
+        clip: { x: 0, y: 0, width: cssW, height: cssH, scale: scale / dpr },
       });
       await askOffscreen({ cmd: 'band', dataUrl: 'data:image/png;base64,' + shot.data, y: 0 });
       bands = 1;
@@ -142,56 +148,66 @@ async function captureTab(tab, settings) {
 
         const totalDev = Math.round(finalCssH * scale);
         const estimate = Math.max(1, Math.ceil(totalDev / Math.round(vp * scale)));
-        let covered = 0, guard = 0;
-        while (covered < totalDev && guard++ < 4000) {
-          progress(tabId, bands, estimate);
-          const yCss = covered / scale;
 
-          // Band capture must be immune to scroll timing: smooth scrolling (or a
-          // busy renderer) means the page can still be MOVING when the shot is
-          // taken, which mis-crops the band and repeats rows. So:
-          //   1. scroll instantly and wait until scrollY is stable across
-          //      animation frames;
-          //   2. read scrollY through the SAME CDP session right before and
-          //      right after the shot -- if it moved, the shot is discarded and
-          //      retaken (self-healing regardless of the cause);
-          //   3. the stitcher also rejects a band that duplicates the seam.
-          let attempt = 0, r = null;
-          while (attempt++ < 4) {
-            await runInPage(tabId, (y) => {
-              window.scrollTo({ top: y, left: 0, behavior: 'instant' });
-              return new Promise((res) => {
-                let last = -1, same = 0, n = 0;
-                const tick = () => {
-                  const cy = window.scrollY;
-                  if (Math.abs(cy - last) < 0.5) {
-                    if (++same >= 2) return res(cy);
-                  } else same = 0;
-                  last = cy;
-                  if (++n > 90) return res(cy);   // hard cap ~1.5s
-                  requestAnimationFrame(tick);
-                };
+        // Scroll down with a deliberate OVERLAP and let the stitcher find the
+        // true join by matching pixels. Scroll positions are only a hint here:
+        // asking the page where it is (and trusting the answer) is what made
+        // rows repeat, because the reported position and the pixels that come
+        // back can disagree.
+        const OVERLAP_CSS = Math.max(60, Math.round(vp * 0.15));
+        let yCss = 0, guard = 0, stuck = 0;
+        let filled = 0;
+        while (guard++ < 4000) {
+          progress(tabId, bands, estimate);
+          await runInPage(tabId, (y) => {
+            window.scrollTo({ top: y, left: 0, behavior: 'instant' });
+            return new Promise((res) => {
+              let last = -1, same = 0, n = 0;
+              const tick = () => {
+                const cy = window.scrollY;
+                if (Math.abs(cy - last) < 0.5) { if (++same >= 2) return res(cy); }
+                else same = 0;
+                last = cy;
+                if (++n > 90) return res(cy);          // hard cap ~1.5s
                 requestAnimationFrame(tick);
-              });
-            }, [yCss]);
-            const before = (await sendCmd(tabId, 'Runtime.evaluate',
-              { expression: 'window.scrollY', returnByValue: true })).result.value;
-            const shot = await sendCmd(tabId, 'Page.captureScreenshot',
-              { format: 'png', captureBeyondViewport: false, fromSurface: true });
-            const after = (await sendCmd(tabId, 'Runtime.evaluate',
-              { expression: 'window.scrollY', returnByValue: true })).result.value;
-            if (Math.abs(after - before) > 0.5) continue;      // moved mid-shot
-            const topCrop = Math.max(0, covered - Math.round(before * scale));
-            r = await askOffscreen({
-              cmd: 'band', dataUrl: 'data:image/png;base64,' + shot.data,
-              y: covered, topCrop, maxRows: totalDev - covered,
+              };
+              requestAnimationFrame(tick);
             });
-            if (r.seamDup) { r = null; continue; }             // stitcher rejected
-            break;
+          }, [yCss]);
+
+          const actual = await runInPage(tabId, () => window.scrollY);
+          const shot = await sendCmd(tabId, 'Page.captureScreenshot',
+            { format: 'png', captureBeyondViewport: false, fromSurface: true });
+          // how much of this capture should already be assembled: the top of
+          // the viewport sits at `actual`, and we have content down to `filled`
+          const overlapDev = Math.max(0, filled - Math.round(actual * scale));
+          const r = await askOffscreen({
+            cmd: 'band', dataUrl: 'data:image/png;base64,' + shot.data,
+            expectedOverlap: overlapDev,
+          });
+
+          if (r.noOverlap) {
+            trace.push(`y=${Math.round(yCss)} act=${Math.round(actual)} ov=${overlapDev} NO-OVERLAP ` +
+                       `rawBest=${(r.rawBest||0).toFixed(1)}@${r.rawAt} want=${r.want} n=${r.n} win=[${r.lo},${r.hi}]`);
+            // The join could not be proven. Never guess a position (guessing is
+            // what duplicated rows): scroll back so more of the assembled tail
+            // is on screen and retake.
+            if (++stuck > 8) break;
+            yCss = Math.max(0, (filled / scale) - OVERLAP_CSS * (1 + stuck));
+            continue;
           }
-          if (!r || !r.rows) break;
-          covered += r.rows;
+          trace.push(`y=${Math.round(yCss)} act=${Math.round(actual)} ov=${overlapDev} ` +
+                     `bh=${r.bh} start=${r.start} tail=${r.tailRows} ` +
+                     `rows=${r.rows || 0} filled=${r.filled || filled} q=${(r.quality || 0).toFixed(1)}`);
+          stuck = 0;
+          if (r.atBottom || !r.rows) break;            // nothing new: page ended
+          filled = r.filled;
           bands++;
+          if (filled >= totalDev) break;
+          // Drive the next scroll from what is ACTUALLY assembled, not from a
+          // fixed step: advancing blindly outruns the capture and leaves gaps
+          // (measured: half the page missing).
+          yCss = Math.max(0, (filled / scale) - OVERLAP_CSS);
         }
       } finally {
         await sendCmd(tabId, 'Emulation.clearDeviceMetricsOverride').catch(() => {});
@@ -224,7 +240,8 @@ async function captureTab(tab, settings) {
   }
   await askOffscreen({ cmd: 'cleanup' });
   return {
-    ok: true, files, bands, split, blankRuns: out.blankRuns,
+    ok: true, files, bands, split, blankRuns: out.blankRuns, trace,
+    diag: { cssW, cssH, finalCssH, contentH, scale, outW: out.width, outH: out.height, trimmed: out.trimmed },
     // be explicit when a very long page forced a compromise on the PNG
     note: (out.pngParts > 1)
       ? `※とても長いページのため、PNGは${out.pngParts}枚に分けて保存しました（PDFは1つです）`
