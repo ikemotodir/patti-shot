@@ -28,6 +28,7 @@ WORK = os.path.join(os.environ["TEMP"], "patti_shot_order_test")
 CASES = [
     ("ruler", 300, lambda i: (20 + (i // 16), 20 + (i % 16) * 14, 90), 0.75),
     ("ruler_table", 600, lambda i: (20 + (i // 25), 20 + (i % 25) * 9, 120), 0.006),
+    ("ruler_lategrow", 600, lambda i: (20 + (i // 25), 20 + (i % 25) * 9, 120), 0.006),
 ]
 
 
@@ -59,6 +60,9 @@ def run_case(page, downloads, name, bands, colour_for, x_frac, imaging):
         return JSON.parse(document.documentElement.getAttribute('data-patti-shot-last') || '{}');
     } catch (e) { return {}; } }""")
     forced = (info.get("diag") or {}).get("degradedBands", 0)
+    for line in info.get("trace", []):
+        if "伸びた" in line or "途中" in line:
+            print("   " + line, flush=True)
 
     pngs = []
     for _ in range(30):

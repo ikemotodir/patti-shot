@@ -76,7 +76,9 @@ async function placeBand(dataUrl, absY, limitH) {
   W = bw;
   covered.push([y, y + bh]);
   filled = Math.max(filled, y + bh);
-  return { rows: bh, y, filled, gaps: gapList(limitH || filled) };
+  // `w` lets the caller check the capture really came back at the scale it
+  // asked for instead of assuming it did
+  return { rows: bh, y, w: bw, filled, gaps: gapList(limitH || filled) };
 }
 
 // merged coverage gaps inside [0, total)

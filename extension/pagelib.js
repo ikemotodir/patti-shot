@@ -115,19 +115,42 @@
   }
 
   // ---- lazy-load firing: round-trip scroll (STEP1.2) ----
+  function scrollExtent() {
+    const h = S.scrollerIsDoc ? document.scrollingElement.scrollHeight
+                              : S.scroller.scrollHeight;
+    const vp = S.scrollerIsDoc ? window.innerHeight : S.scroller.clientHeight;
+    return h - vp;
+  }
+
   async function triggerLazyLoad() {
     const step = Math.max(200, Math.floor(window.innerHeight * 0.85));
     let travelled = 0;
     const CAP = 100000;
+    const t0 = Date.now();
     // downward
     let pos = 0, guard = 0;
     while (guard++ < 2000) {
       scrollTo(pos);
       await raf(); await wait(80);
       travelled += step;
-      const max = (S.scrollerIsDoc ? document.scrollingElement.scrollHeight
-                                   : S.scroller.scrollHeight) - window.innerHeight;
-      if (pos >= max || travelled >= CAP) break;
+      let max = scrollExtent();
+      if (pos >= max) {
+        // Rows that only render once you reach them arrive AFTER the scroll,
+        // not with it. Believing the first "we are at the bottom" is what saved
+        // a 48,330 px page as 2,967 px - it looked like a fine screenshot that
+        // simply stopped at row 20. So wait for the height to settle before
+        // accepting that this really is the end. Skipped entirely when the page
+        // does not scroll at all, so short pages stay fast.
+        if (max > 0) {
+          for (let w = 0; w < 14; w++) {
+            await wait(120);
+            if (scrollExtent() > max) break;
+          }
+          max = scrollExtent();
+        }
+        if (pos >= max) break;
+      }
+      if (travelled >= CAP || Date.now() - t0 > 90000) break;
       pos = Math.min(pos + step, max);
     }
     // upward

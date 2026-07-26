@@ -209,9 +209,63 @@ def ruler_table() -> str:
             + "<table>" + "".join(rows) + "</table></body></html>")
 
 
+def ruler_lategrow() -> str:
+    """A page that lies about how tall it is until you get there.
+
+    The boss's capture of J-PlatPat came back 2,967 px of a 48,330 px page - it
+    stopped right after row 20 and saved that as if it were the whole thing. A
+    list that only renders as it is reached does exactly this: whatever the
+    height says when the shutter opens is not the height of the page.
+
+    Here the rows appear in blocks of 60, and each block takes 700ms to show up
+    - deliberately slower than the engine's scroll-through, so measuring once
+    and trusting it truncates the page. Same colour-coded index as ruler_table,
+    so the result is still decoded and checked exactly.
+    """
+    n = 600
+    css = ("body{margin:0;font:14px/1.4 sans-serif}"
+           "table{border-collapse:collapse;width:100%}"
+           "td{border:1px solid #ccc;padding:12px 10px;height:24px}"
+           ".ix{width:26px;padding:0}"
+           ".ic{color:#fff;background:#5b2d8e;border-radius:4px;padding:2px 6px;font-size:12px}")
+    js = f"""
+    const N = {n}, BLOCK = 60, DELAY = 700;
+    let shown = 0, pending = false;
+    const tb = document.getElementById('tb');
+    function add() {{
+      const end = Math.min(N, shown + BLOCK);
+      let html = '';
+      for (let i = shown; i < end; i++) {{
+        const r = 20 + Math.floor(i / 25), g = 20 + (i % 25) * 9;
+        html += "<tr><td class='ix' style='background:rgb(" + r + "," + g + ",120)'></td>" +
+                "<td>09</td><td><span class='ic'>審</span></td><td>-</td>" +
+                "<td>音楽を録音した記録媒体</td><td>musical sound recordings</td>" +
+                "<td>24E02</td></tr>";
+      }}
+      tb.insertAdjacentHTML('beforeend', html);
+      shown = end;
+      pending = false;
+    }}
+    function maybe() {{
+      if (pending || shown >= N) return;
+      const de = document.scrollingElement;
+      if (de.scrollTop + window.innerHeight < de.scrollHeight - 400) return;
+      pending = true;
+      setTimeout(add, DELAY);
+    }}
+    add();
+    addEventListener('scroll', maybe, {{ passive: true }});
+    setInterval(maybe, 200);
+    """
+    return (_HEAD.format(lang="ja", title="ruler_lategrow", css=css)
+            + "<table><tbody id='tb'></tbody></table>"
+            + "<script>" + js + "</script></body></html>")
+
+
 FIXTURES = {
     "ruler": ruler,
     "ruler_table": ruler_table,
+    "ruler_lategrow": ruler_lategrow,
     "short": short, "long": long_page, "lazy": lazy, "fixedheader": fixed_header,
     "innerscroll": inner_scroll, "infinite": infinite, "wide": wide,
     "japanese": japanese, "tables": tables, "iframe": iframe, "dark": dark,
