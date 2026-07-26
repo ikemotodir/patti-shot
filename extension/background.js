@@ -146,18 +146,50 @@ async function captureTab(tab, settings) {
         while (covered < totalDev && guard++ < 4000) {
           progress(tabId, bands, estimate);
           const yCss = covered / scale;
-          await runInPage(tabId, (y) => window.scrollTo(0, y), [yCss]);
-          // settle: let the scroll commit and any just-revealed content paint
-          await new Promise((r) => setTimeout(r, 120));
-          const actual = await runInPage(tabId, () => window.scrollY);
-          const shot = await sendCmd(tabId, 'Page.captureScreenshot',
-            { format: 'png', captureBeyondViewport: false, fromSurface: true });
-          const topCrop = Math.max(0, covered - Math.round(actual * scale));
-          const r = await askOffscreen({
-            cmd: 'band', dataUrl: 'data:image/png;base64,' + shot.data,
-            y: covered, topCrop, maxRows: totalDev - covered,
-          });
-          if (!r.rows) break;
+
+          // Band capture must be immune to scroll timing: smooth scrolling (or a
+          // busy renderer) means the page can still be MOVING when the shot is
+          // taken, which mis-crops the band and repeats rows. So:
+          //   1. scroll instantly and wait until scrollY is stable across
+          //      animation frames;
+          //   2. read scrollY through the SAME CDP session right before and
+          //      right after the shot -- if it moved, the shot is discarded and
+          //      retaken (self-healing regardless of the cause);
+          //   3. the stitcher also rejects a band that duplicates the seam.
+          let attempt = 0, r = null;
+          while (attempt++ < 4) {
+            await runInPage(tabId, (y) => {
+              window.scrollTo({ top: y, left: 0, behavior: 'instant' });
+              return new Promise((res) => {
+                let last = -1, same = 0, n = 0;
+                const tick = () => {
+                  const cy = window.scrollY;
+                  if (Math.abs(cy - last) < 0.5) {
+                    if (++same >= 2) return res(cy);
+                  } else same = 0;
+                  last = cy;
+                  if (++n > 90) return res(cy);   // hard cap ~1.5s
+                  requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+              });
+            }, [yCss]);
+            const before = (await sendCmd(tabId, 'Runtime.evaluate',
+              { expression: 'window.scrollY', returnByValue: true })).result.value;
+            const shot = await sendCmd(tabId, 'Page.captureScreenshot',
+              { format: 'png', captureBeyondViewport: false, fromSurface: true });
+            const after = (await sendCmd(tabId, 'Runtime.evaluate',
+              { expression: 'window.scrollY', returnByValue: true })).result.value;
+            if (Math.abs(after - before) > 0.5) continue;      // moved mid-shot
+            const topCrop = Math.max(0, covered - Math.round(before * scale));
+            r = await askOffscreen({
+              cmd: 'band', dataUrl: 'data:image/png;base64,' + shot.data,
+              y: covered, topCrop, maxRows: totalDev - covered,
+            });
+            if (r.seamDup) { r = null; continue; }             // stitcher rejected
+            break;
+          }
+          if (!r || !r.rows) break;
           covered += r.rows;
           bands++;
         }

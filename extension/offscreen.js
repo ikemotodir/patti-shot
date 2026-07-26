@@ -26,12 +26,39 @@ let W = 0, H = 0;
 let bands = [];                 // {blob, y, h} in device px
 let urls = [];
 let cleanupTimer = null;
+let lastSeam = null;            // previous band's bottom rows (raw pixels)
+
+const SEAM_ROWS = 12;
 
 function begin(width, height) {
   if (cleanupTimer) { clearTimeout(cleanupTimer); cleanupTimer = null; }
   W = width; H = height;
   bands = [];
   urls = [];
+  lastSeam = null;
+}
+
+function stripPixels(bmp, srcY, rows) {
+  const c = new OffscreenCanvas(bmp.width, rows);
+  const cx = c.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(bmp, 0, srcY, bmp.width, rows, 0, 0, bmp.width, rows);
+  return cx.getImageData(0, 0, bmp.width, rows).data;
+}
+
+function sameBytes(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+function isFlat(d) {
+  let mn = 255, mx = 0;
+  for (let i = 0; i < d.length; i += 16) {
+    const v = d[i];
+    if (v < mn) mn = v;
+    if (v > mx) mx = v;
+  }
+  return (mx - mn) < 8;
 }
 
 async function addBand(dataUrl, y, topCrop, maxRows) {
@@ -42,6 +69,19 @@ async function addBand(dataUrl, y, topCrop, maxRows) {
   if (maxRows != null) rows = Math.min(rows, maxRows);
   if (rows <= 0) { bmp.close(); return { rows: 0 }; }
 
+  // Seam guard: consecutive bands are consecutive page rows, so the new band's
+  // first rows must NOT be pixel-identical to the previous band's last rows.
+  // Identical (and non-blank) means the band was cropped at a stale scroll
+  // position -- reject it so the caller retakes it. This makes row duplication
+  // structurally impossible, whatever the timing cause.
+  const n = Math.min(SEAM_ROWS, rows);
+  const top = stripPixels(bmp, crop, n);
+  if (lastSeam && sameBytes(lastSeam, top) && !isFlat(top)) {
+    bmp.close();
+    return { seamDup: true };
+  }
+  const bottom = stripPixels(bmp, crop + rows - n, n);
+
   if (crop === 0 && rows === bmp.height) {
     bmp.close();
     bands.push({ blob, y, h: rows });          // keep the original, no re-encode
@@ -51,6 +91,7 @@ async function addBand(dataUrl, y, topCrop, maxRows) {
     bmp.close();
     bands.push({ blob: await c.convertToBlob({ type: 'image/png' }), y, h: rows });
   }
+  lastSeam = bottom;
   return { rows };
 }
 

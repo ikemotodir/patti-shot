@@ -86,7 +86,11 @@ BROWSER_JS = r"""
       const st = document.createElement('style');
       st.setAttribute('data-patti-shot', '1');
       st.textContent = '*{content-visibility:visible !important;' +
-                       'contain-intrinsic-size:auto !important;}';
+                       'contain-intrinsic-size:auto !important;' +
+                       // smooth scrolling animates window.scrollTo, so the page
+                       // is still moving when a band is captured -> misaligned
+                       // stitch with repeated rows. Force instant scrolling.
+                       'scroll-behavior:auto !important;}';
       document.documentElement.appendChild(st);
       pushRestore(() => { if (st.parentNode) st.parentNode.removeChild(st); });
     } catch (e) {}
