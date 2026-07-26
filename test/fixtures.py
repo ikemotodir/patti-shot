@@ -181,8 +181,37 @@ def ruler() -> str:
             + "</body></html>")
 
 
+def ruler_table() -> str:
+    """The nasty case, made checkable.
+
+    J-PlatPat's result table is hundreds of rows that look nearly identical, and
+    that ambiguity is what made the stitcher join at the wrong row (the boss saw
+    rows 21..62 missing). This reproduces that look - same icons, same repeated
+    cell text - but every row carries a colour-coded index in a narrow column,
+    so the capture can be decoded back into a sequence and checked exactly.
+    """
+    n = 600                                    # ~48px per row -> ~29,000 px
+    css = ("body{margin:0;font:14px/1.4 sans-serif}"
+           "table{border-collapse:collapse;width:100%}"
+           "td{border:1px solid #ccc;padding:12px 10px;height:24px}"
+           ".ix{width:26px;padding:0}"
+           ".ic{color:#fff;background:#5b2d8e;border-radius:4px;padding:2px 6px;font-size:12px}")
+    rows = []
+    for i in range(n):
+        r = 20 + (i // 25)                     # unique (r,g) pair per row
+        g = 20 + (i % 25) * 9
+        rows.append(
+            f"<tr><td class='ix' style='background:rgb({r},{g},120)'></td>"
+            f"<td>09</td><td><span class='ic'>審</span></td><td>-</td>"
+            f"<td>音楽を録音した記録媒体</td><td>musical sound recordings</td>"
+            f"<td>24E02</td></tr>")
+    return (_HEAD.format(lang="ja", title="ruler_table", css=css)
+            + "<table>" + "".join(rows) + "</table></body></html>")
+
+
 FIXTURES = {
     "ruler": ruler,
+    "ruler_table": ruler_table,
     "short": short, "long": long_page, "lazy": lazy, "fixedheader": fixed_header,
     "innerscroll": inner_scroll, "infinite": infinite, "wide": wide,
     "japanese": japanese, "tables": tables, "iframe": iframe, "dark": dark,

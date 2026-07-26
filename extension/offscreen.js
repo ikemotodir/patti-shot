@@ -26,157 +26,71 @@ let W = 0, H = 0;
 let bands = [];                 // {blob, y, h} in device px
 let urls = [];
 let cleanupTimer = null;
-let tail = null;                // signature of the assembled image's last rows
-let tailRows = 0;
 let filled = 0;                 // rows assembled so far
-
-// how many rows of the previous band must line up before a position is trusted
-const MATCH_ROWS = 10;
+let covered = [];               // [start,end) device rows already placed
 
 function begin(width, height) {
   if (cleanupTimer) { clearTimeout(cleanupTimer); cleanupTimer = null; }
   W = width; H = height;
   bands = [];
   urls = [];
-  tail = null;
-  tailRows = 0;
   filled = 0;
-}
-
-// Rows are compared on a small greyscale signature, NOT on exact pixels:
-// scrolling changes sub-pixel text antialiasing, so identical content does not
-// come back byte-identical and exact matching would never find the join.
-const SIG_COLS = 64;
-
-function rowSignatures(data, w, h) {
-  const sig = new Uint8Array(h * SIG_COLS);
-  const colStep = Math.max(1, Math.floor(w / SIG_COLS));
-  for (let y = 0; y < h; y++) {
-    const o = y * w * 4;
-    for (let c = 0; c < SIG_COLS; c++) {
-      const x = Math.min(w - 1, c * colStep);
-      const i = o + x * 4;
-      sig[y * SIG_COLS + c] = (data[i] * 77 + data[i + 1] * 151 + data[i + 2] * 28) >> 8;
-    }
-  }
-  return sig;
-}
-
-// mean absolute difference between `rows` signature rows of a and b
-function sigDiff(a, aRow, b, bRow, rows) {
-  let sum = 0;
-  const n = rows * SIG_COLS;
-  let ia = aRow * SIG_COLS, ib = bRow * SIG_COLS;
-  for (let i = 0; i < n; i++) {
-    const d = a[ia + i] - b[ib + i];
-    sum += d < 0 ? -d : d;
-  }
-  return sum / n;
+  covered = [];
 }
 
 /**
- * Is this strip usable as a position anchor?
+ * Place a capture at an ABSOLUTE position in the page.
  *
- * It must vary VERTICALLY - consecutive rows must differ. A strip that only
- * varies across the row (a band of flat colour with text in it) looks identical
- * at every offset inside that band, so the join can land up to a band-height
- * early and that many rows get appended twice. Measured on the ruler fixture:
- * the join came out 130 rows high every time, 1,871 duplicated rows in total.
- */
-function isAnchored(sig, fromRow, rows) {
-  let edges = 0;
-  for (let y = fromRow + 1; y < fromRow + rows; y++) {
-    let d = 0;
-    for (let c = 0; c < SIG_COLS; c++) {
-      const a = sig[y * SIG_COLS + c], b = sig[(y - 1) * SIG_COLS + c];
-      d += a > b ? a - b : b - a;
-    }
-    if (d / SIG_COLS > 6) edges++;         // a horizontal edge in the strip
-  }
-  return edges >= 2;
-}
-
-/**
- * Append a freshly captured viewport.
+ * `absY` is round(scrollY * scale): the row of the full image where this
+ * viewport begins. Overlaps simply overwrite the same content, so a row can
+ * never appear twice however the scroll behaves, and nothing accumulates - an
+ * odd capture cannot shift everything after it.
  *
- * The position is decided by matching PIXELS, not by scroll arithmetic: the
- * last rows already assembled are searched for inside the new capture, and only
- * what comes after that match is appended. Scroll position, smooth scrolling,
- * viewport emulation and sticky re-layout can all lie; the image cannot. This
- * is what stops rows from repeating (the boss saw ...19, 20, then 9 again).
+ * Matching pixels was tried instead and does not survive real pages: a table of
+ * hundreds of near-identical rows (J-PlatPat) matches at the wrong row, which
+ * skipped rows 21..62, and flat colour bands match anywhere, which duplicated
+ * 130 rows per join. Absolute placement has neither failure mode.
  */
-async function addBand(dataUrl, expectedOverlap) {
+async function placeBand(dataUrl, absY, limitH) {
   const blob = await (await fetch(dataUrl)).blob();
   const bmp = await createImageBitmap(blob);
-  const bw = bmp.width, bh = bmp.height;
-
-  const c = new OffscreenCanvas(bw, bh);
-  const cx = c.getContext('2d', { willReadFrequently: true });
-  cx.drawImage(bmp, 0, 0);
-  bmp.close();
-  const data = cx.getImageData(0, 0, bw, bh).data;
-  const sig = rowSignatures(data, bw, bh);
-
-  let start = 0;                 // first row of this capture that is new
-  let quality = 0;
-  if (tail) {
-    const n = tailRows;
-    // The assembled tail should end exactly where the already-seen overlap ends.
-    // Search a window around that, not the whole capture: on a page of similar
-    // looking rows a far-away match is far more likely to be a coincidence than
-    // the truth.
-    const want = Math.max(0, Math.min(bh - n, (expectedOverlap || 0) - n));
-    const slack = Math.max(240, Math.round(bh * 0.25));
-    const lo = Math.max(0, want - slack);
-    const hi = Math.min(bh - n, want + slack);
-    let best = -1, bestDiff = 1e9, rawBest = 1e9, rawAt = -1;
-    for (let i = lo; i <= hi; i++) {
-      const d = sigDiff(tail, 0, sig, i, n);
-      if (d < rawBest) { rawBest = d; rawAt = i; }
-      // Locality matters: where the scroll says we are is a strong prior, so a
-      // pixel match far from it must be clearly better to win. Too weak a
-      // penalty let a coincidental match a few rows away take over.
-      const score = d + Math.abs(i - want) * 0.02;
-      if (score < bestDiff) { bestDiff = score; best = i; }
-    }
-    quality = bestDiff;
-    if (best < 0 || rawBest > 6) {
-      // The join could not be proven. Guessing a position is exactly how rows
-      // got duplicated, so ask the caller to retry from a bit further back.
-      return { noOverlap: true, height: bh, diff: bestDiff,
-               rawBest, rawAt, want, n, lo, hi };
-    }
-    // trust the pixels: use the best raw match, nudged by the locality prior
-    if (Math.abs(rawAt - best) > 0 && rawBest + 0.5 < sigDiff(tail, 0, sig, best, n)) {
-      best = rawAt;
-    }
-    start = best + n;
-  }
-
-  const rows = bh - start;
-  if (rows <= 0) return { rows: 0, atBottom: true };   // nothing new: bottom
+  const bw = bmp.width;
+  let bh = bmp.height;
+  let srcY = 0;
+  let y = Math.max(0, Math.round(absY || 0));
+  if (absY < 0) { srcY = -Math.round(absY); bh -= srcY; y = 0; }
+  if (limitH && y + bh > limitH) bh = limitH - y;
+  if (bh <= 0) { bmp.close(); return { rows: 0 }; }
 
   let outBlob;
-  if (start === 0) {
+  if (srcY === 0 && bh === bmp.height) {
     outBlob = blob;
+    bmp.close();
   } else {
-    const c2 = new OffscreenCanvas(bw, rows);
-    c2.getContext('2d').drawImage(c, 0, start, bw, rows, 0, 0, bw, rows);
-    outBlob = await c2.convertToBlob({ type: 'image/png' });
+    const c = new OffscreenCanvas(bw, bh);
+    c.getContext('2d').drawImage(bmp, 0, srcY, bw, bh, 0, 0, bw, bh);
+    bmp.close();
+    outBlob = await c.convertToBlob({ type: 'image/png' });
   }
-  bands.push({ blob: outBlob, y: filled, h: rows });
-  filled += rows;
-  W = bw;      // authoritative: the width the capture really came back at
+  bands.push({ blob: outBlob, y, h: bh });
+  W = bw;
+  covered.push([y, y + bh]);
+  filled = Math.max(filled, y + bh);
+  return { rows: bh, y, filled, gaps: gapList(limitH || filled) };
+}
 
-  // The tail must always END at the bottom of what is assembled, so that
-  // `start = match + tailRows` in the next capture is exactly the first unseen
-  // row. A featureless strip would match anywhere, so it is grown upwards until
-  // it carries some contrast.
-  let k = Math.min(MATCH_ROWS, bh);
-  while (k < Math.min(900, bh) && !isAnchored(sig, bh - k, k)) k += MATCH_ROWS;
-  tailRows = k;
-  tail = sig.slice((bh - k) * SIG_COLS, bh * SIG_COLS);
-  return { rows, filled, quality, bh, start, tailRows };
+// merged coverage gaps inside [0, total)
+function gapList(total) {
+  const iv = covered.slice().sort((a, b) => a[0] - b[0]);
+  const gaps = [];
+  let at = 0;
+  for (const [s, e] of iv) {
+    if (s > at) gaps.push([at, Math.min(s, total)]);
+    at = Math.max(at, e);
+    if (at >= total) break;
+  }
+  if (at < total) gaps.push([at, total]);
+  return gaps.filter(([s, e]) => e - s > 2);
 }
 
 // compose [y0, y1) of the full image onto a canvas, optionally scaled by `k`
@@ -385,7 +299,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
       if (msg.cmd === 'begin') { begin(msg.width, msg.height); sendResponse({ ok: true }); }
-      else if (msg.cmd === 'band') sendResponse(await addBand(msg.dataUrl, msg.y, msg.topCrop, msg.maxRows));
+      else if (msg.cmd === 'place') sendResponse(await placeBand(msg.dataUrl, msg.absY, msg.limitH));
+      else if (msg.cmd === 'gaps') sendResponse({ gaps: gapList(msg.total || filled), filled });
       else if (msg.cmd === 'finish') sendResponse(await finish(msg.fmt, msg.scale, msg.maxTrim, msg.base));
       else if (msg.cmd === 'cleanup') {
         // release the blobs a little later: the downloads still read them

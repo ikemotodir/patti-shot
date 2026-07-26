@@ -105,6 +105,7 @@ async function captureTab(tab, settings) {
 
   const split = cssH * scale > SINGLE_SHOT_MAX_DEVICE;
   let bands = 0;
+  let degradedBands = 0;
   const trace = [];
   let finalCssH = cssH;              // may change under an emulated viewport
   let contentH = m.contentHeight;
@@ -121,7 +122,7 @@ async function captureTab(tab, settings) {
         format: 'png', captureBeyondViewport: true, fromSurface: true,
         clip: { x: 0, y: 0, width: cssW, height: cssH, scale: scale / dpr },
       });
-      await askOffscreen({ cmd: 'band', dataUrl: 'data:image/png;base64,' + shot.data, y: 0 });
+      await askOffscreen({ cmd: 'place', dataUrl: 'data:image/png;base64,' + shot.data, absY: 0 });
       bands = 1;
       progress(tabId, 1, 1);
     } else {
@@ -149,69 +150,77 @@ async function captureTab(tab, settings) {
         const totalDev = Math.round(finalCssH * scale);
         const estimate = Math.max(1, Math.ceil(totalDev / Math.round(vp * scale)));
 
-        // Scroll down with a deliberate OVERLAP and let the stitcher find the
-        // true join by matching pixels. Scroll positions are only a hint here:
-        // asking the page where it is (and trusting the answer) is what made
-        // rows repeat, because the reported position and the pixels that come
-        // back can disagree.
-        const OVERLAP_CSS = Math.max(60, Math.round(vp * 0.15));
-        let yCss = 0, guard = 0, stuck = 0;
-        let filled = 0;
-        while (guard++ < 4000) {
-          progress(tabId, bands, estimate);
-          await runInPage(tabId, (y) => {
-            window.scrollTo({ top: y, left: 0, behavior: 'instant' });
-            return new Promise((res) => {
-              let last = -1, same = 0, n = 0;
-              const tick = () => {
-                const cy = window.scrollY;
-                if (Math.abs(cy - last) < 0.5) { if (++same >= 2) return res(cy); }
-                else same = 0;
-                last = cy;
-                if (++n > 90) return res(cy);          // hard cap ~1.5s
-                requestAnimationFrame(tick);
-              };
-              requestAnimationFrame(tick);
-            });
-          }, [yCss]);
+        // Each viewport is placed at the page coordinate it was taken at, so
+        // overlaps overwrite the same pixels and nothing can accumulate. Then
+        // whatever is still uncovered is captured explicitly, which is what
+        // guarantees "no gaps" instead of hoping for it.
+        const OVERLAP_CSS = Math.max(40, Math.round(vp * 0.08));
+        const stepCss = Math.max(100, vp - OVERLAP_CSS);
 
-          const actual = await runInPage(tabId, () => window.scrollY);
+        // scroll through the page's OWN scroller (an app that scrolls an inner
+        // div does not move at all under window.scrollTo) and wait until it has
+        // actually stopped before the shutter opens.
+        const settleScroll = (y) => runInPage(tabId, (yy) => {
+          const P = window.__PATTISHOT__;
+          P.scrollTo(yy);
+          return new Promise((res) => {
+            let last = -1, same = 0, n = 0;
+            const tick = () => {
+              const cy = P.scrollY();
+              if (Math.abs(cy - last) < 0.5) { if (++same >= 2) return res(cy); }
+              else same = 0;
+              last = cy;
+              if (++n > 90) return res(cy);            // hard cap ~1.5s
+              requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+          });
+        }, [y]);
+
+        const shootAt = async (yCss) => {
+          await settleScroll(yCss);
+          const before = await runInPage(tabId, () => window.__PATTISHOT__.scrollY());
           const shot = await sendCmd(tabId, 'Page.captureScreenshot',
             { format: 'png', captureBeyondViewport: false, fromSurface: true });
-          // how much of this capture should already be assembled: the top of
-          // the viewport sits at `actual`, and we have content down to `filled`
-          const overlapDev = Math.max(0, filled - Math.round(actual * scale));
+          const after = await runInPage(tabId, () => window.__PATTISHOT__.scrollY());
+          if (Math.abs(after - before) > 0.5) return null;   // moved mid-shot
           const r = await askOffscreen({
-            cmd: 'band', dataUrl: 'data:image/png;base64,' + shot.data,
-            expectedOverlap: overlapDev,
+            cmd: 'place', dataUrl: 'data:image/png;base64,' + shot.data,
+            absY: Math.round(before * scale), limitH: totalDev,
           });
-
-          if (r.noOverlap) {
-            trace.push(`y=${Math.round(yCss)} act=${Math.round(actual)} ov=${overlapDev} NO-OVERLAP ` +
-                       `rawBest=${(r.rawBest||0).toFixed(1)}@${r.rawAt} want=${r.want} n=${r.n} win=[${r.lo},${r.hi}]`);
-            // The join could not be proven. Never guess a position (guessing is
-            // what duplicated rows): scroll back so more of the assembled tail
-            // is on screen and retake.
-            if (++stuck > 8) break;
-            yCss = Math.max(0, (filled / scale) - OVERLAP_CSS * (1 + stuck));
-            continue;
-          }
-          trace.push(`y=${Math.round(yCss)} act=${Math.round(actual)} ov=${overlapDev} ` +
-                     `bh=${r.bh} start=${r.start} tail=${r.tailRows} ` +
-                     `rows=${r.rows || 0} filled=${r.filled || filled} q=${(r.quality || 0).toFixed(1)}`);
-          stuck = 0;
-          if (r.atBottom || !r.rows) break;            // nothing new: page ended
-          filled = r.filled;
+          trace.push(`y=${Math.round(yCss)} act=${Math.round(before)} ` +
+                     `-> put@${r.y} rows=${r.rows} filled=${r.filled}`);
           bands++;
-          if (filled >= totalDev) break;
-          // Drive the next scroll from what is ACTUALLY assembled, not from a
-          // fixed step: advancing blindly outruns the capture and leaves gaps
-          // (measured: half the page missing).
-          yCss = Math.max(0, (filled / scale) - OVERLAP_CSS);
+          return r;
+        };
+
+        for (let y = 0; y < finalCssH; y += stepCss) {
+          progress(tabId, bands, estimate);
+          let r = await shootAt(y);
+          if (!r) r = await shootAt(y);                 // one retry if it moved
+          if (r && r.filled >= totalDev) break;
         }
+
+        // Anything still uncovered gets captured on purpose (bottom clamping,
+        // a scroll that did not land, a page that grew while we walked it).
+        for (let pass = 0; pass < 6; pass++) {
+          const g = await askOffscreen({ cmd: 'gaps', total: totalDev });
+          const gaps = (g.gaps || []).filter(([s, e]) => e - s > 4);
+          if (!gaps.length) break;
+          trace.push(`gap pass ${pass + 1}: ${gaps.length}箇所 ${JSON.stringify(gaps.slice(0, 3))}`);
+          for (const [s] of gaps) {
+            progress(tabId, bands, estimate);
+            const target = Math.max(0, s / scale - 8);
+            let r = await shootAt(target);
+            if (!r) await shootAt(target);
+          }
+        }
+        const g2 = await askOffscreen({ cmd: 'gaps', total: totalDev });
+        degradedBands = (g2.gaps || []).length;         // 0 = fully covered
+        trace.push(`remaining gaps: ${degradedBands}`);
       } finally {
         await sendCmd(tabId, 'Emulation.clearDeviceMetricsOverride').catch(() => {});
-        await runInPage(tabId, () => window.scrollTo(0, 0));
+        await runInPage(tabId, () => window.__PATTISHOT__.scrollTo(0));
       }
     }
   } finally {
@@ -241,7 +250,7 @@ async function captureTab(tab, settings) {
   await askOffscreen({ cmd: 'cleanup' });
   return {
     ok: true, files, bands, split, blankRuns: out.blankRuns, trace,
-    diag: { cssW, cssH, finalCssH, contentH, scale, outW: out.width, outH: out.height, trimmed: out.trimmed },
+    diag: { cssW, cssH, finalCssH, contentH, scale, degradedBands, outW: out.width, outH: out.height, trimmed: out.trimmed },
     // be explicit when a very long page forced a compromise on the PNG
     note: (out.pngParts > 1)
       ? `※とても長いページのため、PNGは${out.pngParts}枚に分けて保存しました（PDFは1つです）`

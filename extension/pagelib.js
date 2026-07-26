@@ -47,7 +47,9 @@
   }
 
   function scrollTo(pos) {
-    if (S.scrollerIsDoc) window.scrollTo(0, pos);
+    // behavior:'instant' as well as the forced scroll-behavior:auto: a page that
+    // animates its scroll is still moving when the band is captured.
+    if (S.scrollerIsDoc) window.scrollTo({ top: pos, left: 0, behavior: 'instant' });
     else S.scroller.scrollTop = pos;
   }
   function currentScroll() {
@@ -298,7 +300,7 @@
   window.__PATTISHOT__ = {
     __v: 4,
     prepare, measure, neutralizeFixed, restoreAll, styleSignature,
-    keywordBoxes, findScroller,
+    keywordBoxes, findScroller, scrollTo, scrollY: currentScroll,
     _hideUI: hideUI, _state: S,
   };
 })();
