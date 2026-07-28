@@ -51,13 +51,138 @@ function begin(width, height) {
  * skipped rows 21..62, and flat colour bands match anywhere, which duplicated
  * 130 rows per join. Absolute placement has neither failure mode.
  */
-async function placeBand(dataUrl, absY, limitH) {
+// row signatures, 64 columns of greyscale - sub-pixel antialiasing changes
+// between scrolls, so rows are compared on a coarse signature, not exactly
+const SIG_COLS = 64;
+
+function rowSigs(data, w, h) {
+  const sig = new Float32Array(h * SIG_COLS);
+  const colStep = Math.max(1, Math.floor(w / SIG_COLS));
+  for (let y = 0; y < h; y++) {
+    const o = y * w * 4;
+    for (let c = 0; c < SIG_COLS; c++) {
+      const x = Math.min(w - 1, c * colStep);
+      const i = o + x * 4;
+      sig[y * SIG_COLS + c] = (data[i] * 77 + data[i + 1] * 151 + data[i + 2] * 28) / 256;
+    }
+  }
+  return sig;
+}
+
+function sigErr(a, ai, b, bi, rows, stride) {
+  const st = stride || 1;
+  let sum = 0, n = 0;
+  for (let r = 0; r < rows; r += st) {
+    const oa = (ai + r) * SIG_COLS, ob = (bi + r) * SIG_COLS;
+    for (let c = 0; c < SIG_COLS; c++) {
+      const d = a[oa + c] - b[ob + c];
+      sum += d < 0 ? -d : d;
+      n++;
+    }
+  }
+  return n ? sum / n : Infinity;
+}
+
+function sigVar(a, rows) {
+  let mean = 0;
+  const n = rows * SIG_COLS;
+  for (let i = 0; i < n; i++) mean += a[i];
+  mean /= n;
+  let v = 0;
+  for (let i = 0; i < n; i++) { const d = a[i] - mean; v += d * d; }
+  return Math.sqrt(v / n);
+}
+
+const VERIFY_RANGE = 1400;      // device px to search either way
+
+/**
+ * Where does this capture ACTUALLY belong?
+ *
+ * The scroll position says where it should be, but the screenshot comes from
+ * the compositor and the scroll offset it rendered at can differ from the one
+ * the page reports - Chrome scrolls off the main thread. Measured in the wild:
+ * whole bands landed 546 CSS px off, which drew content over its own neighbour
+ * and made rows 167/168 appear twice.
+ *
+ * So the pixels get a veto. The already-assembled overlap is compared against
+ * the new capture; the scroll-derived position is kept unless the picture says,
+ * clearly and unambiguously, that it is wrong.
+ */
+async function verifyShift(bmp, y) {
+  const CMP = 900;                       // rows of overlap to compare
+  const winTop = Math.max(0, y - VERIFY_RANGE);
+  const winBot = Math.min(filled, y + VERIFY_RANGE + CMP);
+  if (winBot - winTop < 240) return { shift: 0, err: -1, checked: false };
+
+  const { canvas, ctx } = await compose(winTop, winBot);
+  const winH = winBot - winTop;
+  const a = rowSigs(ctx.getImageData(0, 0, W, winH).data, W, winH);
+  release(canvas);
+  if (sigVar(a, winH) < 4) return { shift: 0, err: -1, checked: false };   // featureless
+
+  const bh2 = Math.min(bmp.height, CMP + 8);
+  const c = new OffscreenCanvas(bmp.width, bh2);
+  const cx = c.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(bmp, 0, 0);
+  const b = rowSigs(cx.getImageData(0, 0, bmp.width, bh2).data, bmp.width, bh2);
+  release(c);
+
+  // error when band row 0 is placed at output row y+s: the band and the
+  // assembled image overlap on [max(winTop, y+s), min(winBot, y+s+bh2)), and
+  // BOTH sides are indexed from that overlap - sliding only one of them is what
+  // made the first attempt correct in the wrong direction.
+  const errAt = (s, stride) => {
+    const start = y + s;
+    const t0 = Math.max(winTop, start);
+    const t1 = Math.min(winBot, start + bh2);
+    const rows = t1 - t0;
+    if (rows < 240) return Infinity;
+    return sigErr(a, t0 - winTop, b, t0 - start, Math.min(rows, CMP), stride);
+  };
+
+  let best = 0, bestErr = Infinity;
+  for (let s = -VERIFY_RANGE; s <= VERIFY_RANGE; s += 4) {     // coarse
+    const e = errAt(s, 4);
+    if (e < bestErr) { bestErr = e; best = s; }
+  }
+  for (let s = best - 6; s <= best + 6; s++) {                 // refine
+    const e = errAt(s, 1);
+    if (e < bestErr || s === best) { if (e < bestErr) { bestErr = e; best = s; } }
+  }
+  bestErr = errAt(best, 1);
+
+  // second-best OUTSIDE a small neighbourhood of the winner: on a page of
+  // near-identical rows a wrong row can also score well, and moving a band on
+  // that evidence is how the old matcher skipped rows 21..62
+  let second = Infinity;
+  for (let s = -VERIFY_RANGE; s <= VERIFY_RANGE; s += 4) {
+    if (Math.abs(s - best) <= 120) continue;
+    const e = errAt(s, 4);
+    if (e < second) second = e;
+  }
+  const at0 = errAt(0, 1);
+  const decided = Math.abs(best) > 2 && bestErr < 6 && at0 > 14 &&
+                  bestErr < at0 * 0.4 && bestErr < second * 0.6;
+  return {
+    shift: decided ? best : 0, err: bestErr, at0, second, checked: true, decided,
+    // the scroll position is provably wrong but we could not say where it
+    // belongs - the caller should take the shot again rather than guess
+    bad: at0 > 14 && !decided,
+  };
+}
+
+async function placeBand(dataUrl, absY, limitH, verify) {
   const blob = await (await fetch(dataUrl)).blob();
   const bmp = await createImageBitmap(blob);
   const bw = bmp.width;
   let bh = bmp.height;
   let srcY = 0;
   let y = Math.max(0, Math.round(absY || 0));
+  let check = { shift: 0, err: -1, checked: false };
+  if (verify && covered.length && y < filled) {
+    check = await verifyShift(bmp, y);
+    y = Math.max(0, y + check.shift);
+  }
   if (absY < 0) { srcY = -Math.round(absY); bh -= srcY; y = 0; }
   if (limitH && y + bh > limitH) bh = limitH - y;
   if (bh <= 0) { bmp.close(); return { rows: 0 }; }
@@ -77,8 +202,10 @@ async function placeBand(dataUrl, absY, limitH) {
   covered.push([y, y + bh]);
   filled = Math.max(filled, y + bh);
   // `w` lets the caller check the capture really came back at the scale it
-  // asked for instead of assuming it did
-  return { rows: bh, y, w: bw, filled, gaps: gapList(limitH || filled) };
+  // asked for instead of assuming it did; `shift` says whether the scroll
+  // position had to be overruled by the pixels
+  return { rows: bh, y, w: bw, filled, shift: check.shift, err: check.err,
+           at0: check.at0, bad: !!check.bad, gaps: gapList(limitH || filled) };
 }
 
 // merged coverage gaps inside [0, total)
@@ -301,7 +428,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
       if (msg.cmd === 'begin') { begin(msg.width, msg.height); sendResponse({ ok: true }); }
-      else if (msg.cmd === 'place') sendResponse(await placeBand(msg.dataUrl, msg.absY, msg.limitH));
+      else if (msg.cmd === 'place') sendResponse(await placeBand(msg.dataUrl, msg.absY, msg.limitH, msg.verify));
       else if (msg.cmd === 'gaps') sendResponse({ gaps: gapList(msg.total || filled), filled });
       else if (msg.cmd === 'finish') sendResponse(await finish(msg.fmt, msg.scale, msg.maxTrim, msg.base));
       else if (msg.cmd === 'cleanup') {

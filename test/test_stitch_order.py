@@ -22,13 +22,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from playwright.sync_api import sync_playwright
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-EXT = os.path.abspath(os.path.join(HERE, "..", "extension"))
+EXT = os.environ.get("PATTI_SHOT_EXT") or os.path.abspath(os.path.join(HERE, "..", "extension"))
 WORK = os.path.join(os.environ["TEMP"], "patti_shot_order_test")
 
 CASES = [
     ("ruler", 300, lambda i: (20 + (i // 16), 20 + (i % 16) * 14, 90), 0.75),
     ("ruler_table", 600, lambda i: (20 + (i // 25), 20 + (i % 25) * 9, 120), 0.006),
     ("ruler_lategrow", 600, lambda i: (20 + (i // 25), 20 + (i % 25) * 9, 120), 0.006),
+    ("ruler_liar", 600, lambda i: (20 + (i // 25), 20 + (i % 25) * 9, 120), 0.006),
 ]
 
 
@@ -42,6 +43,17 @@ def run_case(page, downloads, name, bands, colour_for, x_frac, imaging):
     page.wait_for_selector("#patti-shot-fab", timeout=30000)
     page_h = page.evaluate("() => document.documentElement.scrollHeight")
     print(f"--- {name}: {page_h} CSS px / {bands}行 ---", flush=True)
+
+    # A fault-injection fixture that is not actually injecting anything would
+    # pass for the wrong reason, so prove the fault is live before judging.
+    if name == "ruler_liar":
+        lie = page.evaluate("""() => { window.scrollTo(0, 10000);
+            return [window.scrollY, document.scrollingElement.scrollTop]; }""")
+        page.evaluate("() => window.scrollTo(0, 0)")
+        print(f"   嘘の注入: window.scrollY={lie[0]} 実際={lie[1]}", flush=True)
+        if lie[0] == lie[1]:
+            print("   ★ 嘘が効いていない -> テストとして無効", flush=True)
+            return False
 
     page.click("#patti-shot-fab")
     toast = ""
@@ -59,9 +71,11 @@ def run_case(page, downloads, name, bands, colour_for, x_frac, imaging):
     info = page.evaluate("""() => { try {
         return JSON.parse(document.documentElement.getAttribute('data-patti-shot-last') || '{}');
     } catch (e) { return {}; } }""")
-    forced = (info.get("diag") or {}).get("degradedBands", 0)
+    diag = info.get("diag") or {}
+    forced = diag.get("degradedBands", 0)
+    print(f"   帯={info.get('bands', '?')} 位置補正={diag.get('shifted', 0)}回", flush=True)
     for line in info.get("trace", []):
-        if "伸びた" in line or "途中" in line:
+        if "伸びた" in line or "途中" in line or "ずれ" in line:
             print("   " + line, flush=True)
 
     pngs = []
@@ -107,6 +121,11 @@ def run_case(page, downloads, name, bands, colour_for, x_frac, imaging):
 def main():
     from patti_shot import imaging
     import fixtures as fx
+
+    only = None
+    for i, a in enumerate(sys.argv):
+        if a == "--only":
+            only = set(sys.argv[i + 1].split(","))
     import functools, http.server, socketserver, threading
 
     shutil.rmtree(WORK, ignore_errors=True)
@@ -140,6 +159,8 @@ def main():
         cdp.send("Browser.setDownloadBehavior",
                  {"behavior": "allow", "downloadPath": downloads})
         for name, bands, colour_for, x_frac in CASES:
+            if only and name not in only:
+                continue
             results[name] = run_case(page, downloads, name, bands, colour_for, x_frac, imaging)
         ctx.close()
     httpd.shutdown()

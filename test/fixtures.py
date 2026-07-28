@@ -262,10 +262,55 @@ def ruler_lategrow() -> str:
             + "<script>" + js + "</script></body></html>")
 
 
+def ruler_liar() -> str:
+    """A page that reports the wrong scroll position.
+
+    Chrome scrolls on the compositor, so the offset a screenshot was rendered at
+    and the offset the page reports are not always the same number. The boss's
+    capture showed whole bands landing 546 CSS px out, which drew content over
+    its neighbour and printed rows 167/168 twice - while the same code was clean
+    on this machine, because here the two never disagreed.
+
+    Rather than wait for a fast machine to get unlucky, this page lies on
+    purpose: between 8,000 and 16,000 px it reports a scroll position 546 px too
+    small, exactly the observed error. Same colour-coded index as ruler_table,
+    so the saved image is still decoded and checked row by row.
+    """
+    n = 600
+    css = ("body{margin:0;font:14px/1.4 sans-serif}"
+           "table{border-collapse:collapse;width:100%}"
+           "td{border:1px solid #ccc;padding:12px 10px;height:24px}"
+           ".ix{width:26px;padding:0}"
+           ".ic{color:#fff;background:#5b2d8e;border-radius:4px;padding:2px 6px;font-size:12px}")
+    rows = []
+    for i in range(n):
+        r = 20 + (i // 25)
+        g = 20 + (i % 25) * 9
+        rows.append(
+            f"<tr><td class='ix' style='background:rgb({r},{g},120)'></td>"
+            f"<td>09</td><td><span class='ic'>審</span></td><td>-</td>"
+            f"<td>音楽を録音した記録媒体</td><td>musical sound recordings</td>"
+            f"<td>24E02</td></tr>")
+    js = """
+    Object.defineProperty(window, 'scrollY', {
+      configurable: true,
+      get() {
+        const y = document.scrollingElement.scrollTop;
+        return (y > 8000 && y < 16000) ? y - 546 : y;
+      },
+    });
+    window.__LIAR__ = true;
+    """
+    return (_HEAD.format(lang="ja", title="ruler_liar", css=css)
+            + "<table>" + "".join(rows) + "</table>"
+            + "<script>" + js + "</script></body></html>")
+
+
 FIXTURES = {
     "ruler": ruler,
     "ruler_table": ruler_table,
     "ruler_lategrow": ruler_lategrow,
+    "ruler_liar": ruler_liar,
     "short": short, "long": long_page, "lazy": lazy, "fixedheader": fixed_header,
     "innerscroll": inner_scroll, "infinite": infinite, "wide": wide,
     "japanese": japanese, "tables": tables, "iframe": iframe, "dark": dark,
