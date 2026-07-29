@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PATTI SHOT - ページ丸ごとスクリーンショット",
-  "version": "5.5.0",
+  "version": "5.5.1",
   "description": "いま見ているページを、スクロールしないと見えない一番下まで丸ごと1枚のPNG/PDFで保存します。無料・STUDIO PATTI製。",
   "permissions": ["debugger", "downloads", "storage", "scripting", "activeTab", "offscreen"],
   "host_permissions": ["<all_urls>"],

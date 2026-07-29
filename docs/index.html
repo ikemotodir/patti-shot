@@ -233,8 +233,13 @@
   <img class="logo" src="assets/patti_shot_logo.png" alt="PATTI SHOT ロゴ（カメラを持ったおばけ）">
   <h1>PATTI <span class="accent">SHOT</span></h1>
   <p class="tagline">Webページを、スクロールしないと見えない一番下まで<br>丸ごと1枚のPNG / PDFに保存する無料ツール。<br>会議資料の保存や、WebページをまるごとAIに読ませたい時にも。</p>
-  <a class="btn" href="https://github.com/ikemotodir/patti-shot/releases/latest/download/PATTI_SHOT.exe"
-     onclick="gtag('event','download',{app:'patti-shot'})">⬇ 無料ダウンロード（Windows）</a>
+  <a class="btn" id="dl-ext" href="https://github.com/ikemotodir/patti-shot/releases/download/ext-v5.5.1/patti_shot_extension_v5.5.1.zip"
+     onclick="gtag('event','download',{app:'patti-shot-ext'})">⬇ Chrome拡張版をダウンロード（<span id="ver-ext">v5.5.1</span>）</a>
+  <p class="sub" style="margin-top:14px">
+    <a class="btn" id="dl-exe" style="font-size:.95rem;padding:10px 26px;background:#3a3a4e;box-shadow:none"
+       href="https://github.com/ikemotodir/patti-shot/releases/download/v4.2.3/PATTI_SHOT.exe"
+       onclick="gtag('event','download',{app:'patti-shot'})">アプリ版(exe)はこちら（<span id="ver-exe">v4.2.3</span>）</a>
+  </p>
   <p class="sub">無料・登録不要・Windows 10/11用 ／ <a href="https://github.com/ikemotodir/patti-shot">ソースコードを見る（GitHub）</a></p>
   <a class="home-link" href="https://ikemotodir.github.io/">← PATTIツールの棚にもどる</a>
 </header>
@@ -247,6 +252,31 @@
       撮影した画像・PDFは<strong>あなたのPCの中だけ</strong>に保存されます。<br>
       どこかのサーバーにアップロードされることはありません。<br>
       保存先は <strong>ダウンロード\PATTI SHOT</strong> フォルダ。撮影が終わると自動で開きます。
+    </div>
+  </section>
+
+  <!-- Chrome拡張版 -->
+  <section>
+    <h2>🧩 Chrome拡張版の<span class="accent">入れ方と更新</span></h2>
+    <p class="update-note" style="text-align:center">
+      いつものChromeにそのまま入れて、<b>いま見ているページ</b>（ログイン中のページもOK）を撮影できる版です。
+    </p>
+    <ol class="steps">
+      <li>上の<b>「⬇ Chrome拡張版をダウンロード」</b>を押す → zipが保存されます</li>
+      <li>zipを<b>展開して、フォルダごと動かさない場所に置く</b>（例: ドキュメントの中）</li>
+      <li>Chromeで <code>chrome://extensions</code> を開く → 右上の<b>「デベロッパー モード」をON</b></li>
+      <li><b>「パッケージ化されていない拡張機能を読み込む」</b> → 2で置いたフォルダを選ぶ</li>
+      <li>撮りたいページを開くと右下に<b>ピンクの「PATTI SHOT」ボタン</b>が出ます。押すだけ（<code>Ctrl+Shift+S</code>でもOK）</li>
+    </ol>
+    <div class="warn">
+      <strong>🔃 更新のしかた（知っておいてほしいこと）</strong><br>
+      新しい版が出ると、ツールバーのPATTI SHOTアイコンを押した画面に<b>「新しい版があります」</b>と表示されます。<br>
+      表示のリンクから新しいzipをダウンロード → 展開して<b>今のフォルダの中身を入れ替え</b> →
+      <code>chrome://extensions</code> でPATTI SHOTの<b>「更新」ボタン（🔄）</b>を押せば完了です。<br>
+      ※Chromeの仕様で、zip版が勝手に置き換わることはありません（全自動更新の<b>Chromeウェブストア版は準備中</b>です）。<br>
+      ※フォルダ内の <code>create_shortcut.bat</code> をダブルクリックすると、このフォルダへのショートカットが
+      デスクトップにできます（更新のときにフォルダをすぐ開けます）。<br>
+      ※現在のバージョンは撮影後の通知（トースト）とアイコンの画面に表示されます。
     </div>
   </section>
 
@@ -277,11 +307,11 @@
     </div>
   </section>
 
-  <!-- はじめかた -->
+  <!-- はじめかた（exe版） -->
   <section>
-    <h2>🚀 はじめかた（<span class="accent">3ステップ</span>）</h2>
+    <h2>🚀 アプリ版(exe)の<span class="accent">はじめかた</span></h2>
     <ol class="steps">
-      <li>上の <b>「⬇ 無料ダウンロード」</b> を押す → <code>PATTI_SHOT.exe</code> が保存されます</li>
+      <li>上の <b>「アプリ版(exe)はこちら」</b> を押す → <code>PATTI_SHOT.exe</code> が保存されます</li>
       <li>保存した <code>PATTI_SHOT.exe</code> を<b>ダブルクリック</b> → 専用のブラウザが開きます（インストール作業はありません）</li>
       <li>撮りたいページを開いて、画面右下の<b>ピンクの「PATTI SHOT」ボタンをクリック</b>
         （キーボード派は <code>Ctrl+Shift+S</code> でもOK）→ 撮影完了！保存フォルダが自動で開きます</li>
@@ -358,9 +388,13 @@
   <section>
     <h2>🔃 アップデート</h2>
     <p class="update-note">
-      起動すると自動で新しいバージョンを確認します。<br>
-      新しい版があると画面右下にお知らせが出るので、<b>「更新する」を押すだけ</b>。<br>
+      <b>アプリ版(exe)</b>: 起動すると自動で新しいバージョンを確認し、
+      新しい版があると画面右下のお知らせから<b>「更新する」を押すだけ</b>。
       ダウンロード → 置き換え → 再起動まで全自動です。
+      デスクトップのショートカットからの起動も、更新後は自動で最新版が開きます。<br><br>
+      <b>Chrome拡張版</b>: アイコンを押した画面に「新しい版があります」と出たら、
+      zipをダウンロードしてフォルダの中身を入れ替え →「更新」ボタン。
+      詳しくは上の「Chrome拡張版の入れ方と更新」をどうぞ。
     </p>
   </section>
 
@@ -424,10 +458,42 @@
 </main>
 
 <footer>
-  <p>📸 PATTI SHOT v4.2.1</p>
+  <p>📸 PATTI SHOT ── Chrome拡張版 <span id="fver-ext">v5.5.1</span> ／ アプリ版 <span id="fver-exe">v4.2.3</span></p>
   <p>© 2026 STUDIO PATTI LLC ── 合同会社スタジオパッチ（愛知県一宮市）</p>
   <p><a href="https://ikemotodir.github.io/" style="color:var(--yellow)">← PATTI CREATIVE PRODUCT トップへ</a></p>
 </footer>
+
+<script>
+// バージョン・ダウンロード先はGitHub Releasesから自動反映する。
+// リリースを出すだけでページ側の版数表示が追従し、手で書き換える箇所を無くす。
+(async () => {
+  try {
+    const r = await fetch('https://api.github.com/repos/ikemotodir/patti-shot/releases?per_page=30');
+    if (!r.ok) return;
+    const rels = (await r.json()).filter((x) => x && !x.draft && !x.prerelease);
+    const ext = rels.find((x) => x.tag_name && x.tag_name.startsWith('ext-v'));
+    const exe = rels.find((x) => x.tag_name && /^v\d/.test(x.tag_name) &&
+      (x.assets || []).some((a) => a.name === 'PATTI_SHOT.exe'));
+    if (ext) {
+      const v = 'v' + ext.tag_name.slice(5);
+      const zip = (ext.assets || []).find((a) => a.name.endsWith('.zip'));
+      for (const id of ['ver-ext', 'fver-ext']) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = v;
+      }
+      if (zip) document.getElementById('dl-ext').href = zip.browser_download_url;
+    }
+    if (exe) {
+      for (const id of ['ver-exe', 'fver-exe']) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = exe.tag_name;
+      }
+      const asset = (exe.assets || []).find((a) => a.name === 'PATTI_SHOT.exe');
+      if (asset) document.getElementById('dl-exe').href = asset.browser_download_url;
+    }
+  } catch (e) {}
+})();
+</script>
 
 </body>
 </html>

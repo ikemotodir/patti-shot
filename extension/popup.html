@@ -14,6 +14,11 @@
   }
   .hint { margin-top: 10px; color: #777; font-size: 11px; }
   .msg { margin-top: 10px; font-size: 12px; white-space: pre-line; }
+  .upd {
+    display: none; margin-top: 10px; padding: 8px 10px; border-radius: 8px;
+    background: #fff0f5; border: 1px solid #f3c1d3; font-size: 12px;
+  }
+  .upd a { color: #D6336C; font-weight: 700; }
 </style>
 </head>
 <body>
@@ -28,6 +33,7 @@
   <label><input type="radio" name="scale" value="2"> 2x</label>
   <label><input type="radio" name="scale" value="3"> 3x</label>
   <button id="shoot">このページを丸ごと撮影</button>
+  <div class="upd" id="update"></div>
   <div class="hint">ページ右下のピンクのボタン、または Ctrl+Shift+S でも撮影できます。<br>
     保存先：ダウンロード \ PATTI SHOT</div>
   <div class="msg" id="msg"></div>
