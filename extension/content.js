@@ -172,8 +172,15 @@
 
   // progress / messages pushed from the background worker
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg && msg.type === 'progress' && window.__PATTISHOT_UI_API__)
+    if (msg && msg.type === 'progress' && window.__PATTISHOT_UI_API__) {
       window.__PATTISHOT_UI_API__.progress(msg.done, msg.total);
+      // machine-readable heartbeat: lets the test harness see where a long
+      // capture is instead of staring at a silent browser
+      try {
+        document.documentElement.setAttribute('data-patti-shot-progress',
+          JSON.stringify({ done: msg.done, total: msg.total, at: Date.now() }));
+      } catch (e) {}
+    }
     if (msg && msg.type === 'shoot' && window.__PATTISHOT_SHOOT__)
       window.__PATTISHOT_SHOOT__();
   });

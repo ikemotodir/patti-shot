@@ -51,49 +51,91 @@ function begin(width, height) {
  * skipped rows 21..62, and flat colour bands match anywhere, which duplicated
  * 130 rows per join. Absolute placement has neither failure mode.
  */
-// row signatures, 64 columns of greyscale - sub-pixel antialiasing changes
-// between scrolls, so rows are compared on a coarse signature, not exactly
-const SIG_COLS = 64;
+// --- placement verification -------------------------------------------------
+// The first version of this check sampled ONE pixel every ~60 px and averaged
+// the differences. That is mathematically blind to rows whose only difference
+// is something small: a wrong No. cell moves the mean by ~1.5 against a
+// threshold of 14. J-PlatPat's rows are exactly that, so a misplaced band
+// sailed straight through "verification" - no correction, no warning, and the
+// duplicated numbers stayed. This version samples densely and counts the
+// clearly-different samples instead of averaging, so one wrong number in an
+// otherwise identical row is enough to reject a position.
+const VERIFY_RANGE = 1600;      // device px searched either way
+const V_THRESH = 28;            // per-sample "different ink" threshold
+const V_EDGE_L = 4;             // skip the anti-aliased left edge
+const V_EDGE_R = 44;            // skip the scrollbar: its thumb moves per shot
 
-function rowSigs(data, w, h) {
-  const sig = new Float32Array(h * SIG_COLS);
-  const colStep = Math.max(1, Math.floor(w / SIG_COLS));
+function greyStrip(data, w, h, colStep) {
+  const x0 = Math.min(V_EDGE_L, Math.max(0, w - 2));
+  const x1 = Math.max(x0 + 1, w - V_EDGE_R);
+  const cols = Math.max(1, Math.floor((x1 - x0) / colStep));
+  const g = new Uint8Array(h * cols);
+  const ink = new Uint8Array(h);          // row carries any contrast at all
   for (let y = 0; y < h; y++) {
     const o = y * w * 4;
-    for (let c = 0; c < SIG_COLS; c++) {
-      const x = Math.min(w - 1, c * colStep);
-      const i = o + x * 4;
-      sig[y * SIG_COLS + c] = (data[i] * 77 + data[i + 1] * 151 + data[i + 2] * 28) / 256;
+    let mn = 255, mx = 0;
+    for (let c = 0; c < cols; c++) {
+      const i = o + (x0 + c * colStep) * 4;
+      const v = (data[i] * 77 + data[i + 1] * 151 + data[i + 2] * 28) >> 8;
+      g[y * cols + c] = v;
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
     }
+    ink[y] = (mx - mn) > 24 ? 1 : 0;
   }
-  return sig;
+  return { g, cols, rows: h, ink };
 }
 
-function sigErr(a, ai, b, bi, rows, stride) {
-  const st = stride || 1;
-  let sum = 0, n = 0;
-  for (let r = 0; r < rows; r += st) {
-    const oa = (ai + r) * SIG_COLS, ob = (bi + r) * SIG_COLS;
-    for (let c = 0; c < SIG_COLS; c++) {
-      const d = a[oa + c] - b[ob + c];
-      sum += d < 0 ? -d : d;
-      n++;
+// fraction of ROWS that clearly disagree when the band is placed at y+s.
+// A is the assembled image from winTop down; B is the band.
+//
+// Counted per row, not per sample: a wrong 3-digit number is ~10 samples out
+// of ~1000 in its row, which any whole-image average buries. But those 10
+// samples make that ROW unmistakably wrong, and a misplaced band turns every
+// number row into a wrong row - a signal no averaging can hide. At the correct
+// position both images come off the same device pixel grid, so a healthy row
+// has zero clearly-different samples.
+const ROW_BAD = 5;             // samples over V_THRESH that condemn a row
+function fracAt(A, winTop, B, y, s, rowStride) {
+  const cols = Math.min(A.cols, B.cols);
+  const lo = Math.max(winTop, y + s);
+  const hi = Math.min(winTop + A.rows, y + s + B.rows);
+  if (hi - lo < 200) return 1;
+  let badRows = 0, rows = 0;
+  for (let ar = lo; ar < hi; ar += rowStride) {
+    const ra = ar - winTop, rb = ar - y - s;
+    rows++;
+    // two blank rows can never disagree - and most of a page is blank rows,
+    // so this one skip is what makes trying every offset affordable
+    if (!A.ink[ra] && !B.ink[rb]) continue;
+    const oa = ra * A.cols;
+    const ob = rb * B.cols;
+    let bad = 0;
+    for (let c = 0; c < cols; c++) {
+      const d = A.g[oa + c] - B.g[ob + c];
+      if (d > V_THRESH || d < -V_THRESH) { if (++bad >= ROW_BAD) break; }
     }
+    if (bad >= ROW_BAD) badRows++;
   }
-  return n ? sum / n : Infinity;
+  return rows ? badRows / rows : 1;
 }
 
-function sigVar(a, rows) {
-  let mean = 0;
-  const n = rows * SIG_COLS;
-  for (let i = 0; i < n; i++) mean += a[i];
-  mean /= n;
-  let v = 0;
-  for (let i = 0; i < n; i++) { const d = a[i] - mean; v += d * d; }
-  return Math.sqrt(v / n);
+async function bandStrip(bmp, rows) {
+  const h = Math.max(1, Math.min(bmp.height, Math.round(rows)));
+  const c = new OffscreenCanvas(bmp.width, h);
+  const cx = c.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(bmp, 0, 0);
+  const s = greyStrip(cx.getImageData(0, 0, bmp.width, h).data, bmp.width, h, 4);
+  release(c);
+  return s;
 }
 
-const VERIFY_RANGE = 1400;      // device px to search either way
+async function assembledStrip(top, bottom) {
+  const { canvas, ctx } = await compose(top, bottom);
+  const s = greyStrip(ctx.getImageData(0, 0, W, bottom - top).data, W, bottom - top, 4);
+  release(canvas);
+  return s;
+}
 
 /**
  * Where does this capture ACTUALLY belong?
@@ -102,76 +144,107 @@ const VERIFY_RANGE = 1400;      // device px to search either way
  * the compositor and the scroll offset it rendered at can differ from the one
  * the page reports - Chrome scrolls off the main thread. Measured in the wild:
  * whole bands landed 546 CSS px off, which drew content over its own neighbour
- * and made rows 167/168 appear twice.
+ * and printed the same row numbers twice.
  *
- * So the pixels get a veto. The already-assembled overlap is compared against
- * the new capture; the scroll-derived position is kept unless the picture says,
- * clearly and unambiguously, that it is wrong.
+ * So the pixels get a veto. The scroll-derived position is kept unless the
+ * picture clearly rejects it AND clearly prefers exactly one other position -
+ * on a page of near-identical rows a wrong row can also look plausible, and
+ * moving a band on weak evidence is how the old matcher skipped rows 21..62.
  */
 async function verifyShift(bmp, y) {
-  const CMP = 900;                       // rows of overlap to compare
+  const avail = filled - y;
+  if (avail < 240) return { shift: 0, checked: false };
+  // The window must cover every candidate: a shift of +s compares assembled
+  // rows around y+s, so capping the window at y+900 made every position
+  // beyond that "unprovable" - the check then SAW an 82% mismatch but could
+  // not say where the band belonged, and the wrong placement stood.
   const winTop = Math.max(0, y - VERIFY_RANGE);
-  const winBot = Math.min(filled, y + VERIFY_RANGE + CMP);
-  if (winBot - winTop < 240) return { shift: 0, err: -1, checked: false };
+  const winBot = Math.min(filled, y + VERIFY_RANGE + 900);
+  const A = await assembledStrip(winTop, winBot);
+  const B = await bandStrip(bmp, (winBot - y) + VERIFY_RANGE + 8);
 
-  const { canvas, ctx } = await compose(winTop, winBot);
-  const winH = winBot - winTop;
-  const a = rowSigs(ctx.getImageData(0, 0, W, winH).data, W, winH);
-  release(canvas);
-  if (sigVar(a, winH) < 4) return { shift: 0, err: -1, checked: false };   // featureless
+  const f0 = fracAt(A, winTop, B, y, 0, 1);
+  if (f0 < 0.004) return { shift: 0, f0, err: f0, checked: true };
 
-  const bh2 = Math.min(bmp.height, CMP + 8);
-  const c = new OffscreenCanvas(bmp.width, bh2);
-  const cx = c.getContext('2d', { willReadFrequently: true });
-  cx.drawImage(bmp, 0, 0);
-  const b = rowSigs(cx.getImageData(0, 0, bmp.width, bh2).data, bmp.width, bh2);
-  release(c);
-
-  // error when band row 0 is placed at output row y+s: the band and the
-  // assembled image overlap on [max(winTop, y+s), min(winBot, y+s+bh2)), and
-  // BOTH sides are indexed from that overlap - sliding only one of them is what
-  // made the first attempt correct in the wrong direction.
-  const errAt = (s, stride) => {
-    const start = y + s;
-    const t0 = Math.max(winTop, start);
-    const t1 = Math.min(winBot, start + bh2);
-    const rows = t1 - t0;
-    if (rows < 240) return Infinity;
-    return sigErr(a, t0 - winTop, b, t0 - start, Math.min(rows, CMP), stride);
-  };
-
-  let best = 0, bestErr = Infinity;
-  for (let s = -VERIFY_RANGE; s <= VERIFY_RANGE; s += 4) {     // coarse
-    const e = errAt(s, 4);
-    if (e < bestErr) { bestErr = e; best = s; }
+  // The valley at the true position is 1-2 px wide - both images sit on the
+  // same device pixel grid, so being off by even 1 px lights up every ink
+  // edge. A strided search steps clean over it (measured: step 6 missed the
+  // real +1092 every time). So EVERY offset is tried, but on a thin sample of
+  // rows first; only the promising few get the full comparison.
+  const est = new Float32Array(2 * VERIFY_RANGE + 1);
+  const order = [];
+  for (let s = -VERIFY_RANGE; s <= VERIFY_RANGE; s++) {
+    est[s + VERIFY_RANGE] = fracAt(A, winTop, B, y, s, 24);
+    order.push(s);
   }
-  for (let s = best - 6; s <= best + 6; s++) {                 // refine
-    const e = errAt(s, 1);
-    if (e < bestErr || s === best) { if (e < bestErr) { bestErr = e; best = s; } }
+  order.sort((a, b) => est[a + VERIFY_RANGE] - est[b + VERIFY_RANGE]);
+  let sBest = 0, fBest = f0;
+  for (const s of order.slice(0, 32)) {
+    const f = fracAt(A, winTop, B, y, s, 4);
+    if (f < fBest) { fBest = f; sBest = s; }
   }
-  bestErr = errAt(best, 1);
-
-  // second-best OUTSIDE a small neighbourhood of the winner: on a page of
-  // near-identical rows a wrong row can also score well, and moving a band on
-  // that evidence is how the old matcher skipped rows 21..62
-  let second = Infinity;
-  for (let s = -VERIFY_RANGE; s <= VERIFY_RANGE; s += 4) {
-    if (Math.abs(s - best) <= 120) continue;
-    const e = errAt(s, 4);
-    if (e < second) second = e;
+  let s2 = sBest, f2 = 1;
+  for (let s = sBest - 3; s <= sBest + 3; s++) {
+    const f = fracAt(A, winTop, B, y, s, 1);
+    if (f < f2) { f2 = f; s2 = s; }
   }
-  const at0 = errAt(0, 1);
-  const decided = Math.abs(best) > 2 && bestErr < 6 && at0 > 14 &&
-                  bestErr < at0 * 0.4 && bestErr < second * 0.6;
+  sBest = s2; fBest = f2;
+  let second = 1;
+  for (const s of order) {
+    if (Math.abs(s - sBest) <= 12) continue;
+    if (est[s + VERIFY_RANGE] < second) second = est[s + VERIFY_RANGE];
+  }
+  for (const s of order.filter((v) => Math.abs(v - sBest) > 12).slice(0, 8)) {
+    const f = fracAt(A, winTop, B, y, s, 8);
+    if (f < second) second = f;
+  }
+  const decided = Math.abs(sBest) > 2 && fBest < 0.003 &&
+                  f0 > Math.max(0.02, fBest * 6) && fBest < second * 0.35;
   return {
-    shift: decided ? best : 0, err: bestErr, at0, second, checked: true, decided,
-    // the scroll position is provably wrong but we could not say where it
-    // belongs - the caller should take the shot again rather than guess
-    bad: at0 > 14 && !decided,
+    shift: decided ? sBest : 0, f0, err: decided ? fBest : f0,
+    sBest, fBest, second,
+    checked: true, decided,
+    // provably wrong but with no provable home: the caller must retake
+    bad: !decided && f0 >= 0.02,
   };
 }
 
-async function placeBand(dataUrl, absY, limitH, verify) {
+// Are two back-to-back captures of the same viewport the same picture?
+// If they differ, the surface was still changing when the shutter opened -
+// that frame cannot be trusted no matter where it would be placed.
+async function sameShot(urlA, urlB) {
+  const [bmpA, bmpB] = await Promise.all([
+    (async () => createImageBitmap(await (await fetch(urlA)).blob()))(),
+    (async () => createImageBitmap(await (await fetch(urlB)).blob()))(),
+  ]);
+  if (bmpA.width !== bmpB.width || bmpA.height !== bmpB.height) {
+    bmpA.close(); bmpB.close();
+    return { same: false, why: 'size' };
+  }
+  const A = await bandStrip(bmpA, bmpA.height);
+  const B = await bandStrip(bmpB, bmpB.height);
+  bmpA.close(); bmpB.close();
+  const frac = fracAt(A, 0, B, 0, 0, 4);
+  return { same: frac < 0.002, frac };
+}
+
+// The final self-check: a FRESH capture is compared against what was assembled
+// at that position. If every checked spot matches a fresh photograph of the
+// page, the saved image is the page.
+async function qaCompare(dataUrl, absY) {
+  const blob = await (await fetch(dataUrl)).blob();
+  const bmp = await createImageBitmap(blob);
+  const y = Math.max(0, Math.round(absY || 0));
+  const cmp = Math.min(bmp.height, filled - y, 1600);
+  if (cmp < 400) { bmp.close(); return { ok: true, skipped: true, frac: -1 }; }
+  const A = await assembledStrip(y, y + cmp);
+  const B = await bandStrip(bmp, cmp);
+  bmp.close();
+  const frac = fracAt(A, y, B, y, 0, 2);
+  return { ok: frac < 0.006, frac };
+}
+
+async function placeBand(dataUrl, absY, limitH, verify, force) {
   const blob = await (await fetch(dataUrl)).blob();
   const bmp = await createImageBitmap(blob);
   const bw = bmp.width;
@@ -181,6 +254,18 @@ async function placeBand(dataUrl, absY, limitH, verify) {
   let check = { shift: 0, err: -1, checked: false };
   if (verify && covered.length && y < filled) {
     check = await verifyShift(bmp, y);
+    // A band the pixels reject with no provable home is retaken, not placed:
+    // placing it can poison later comparisons. But only while retakes remain -
+    // on the FINAL attempt it goes in at the scroll position regardless,
+    // because a white hole in the middle of the page is strictly worse than
+    // an imperfect band, and the QA pass still gets to inspect the result.
+    if (check.bad && !force) {
+      bmp.close();
+      return { rows: 0, y, w: bw, rejected: true, bad: true,
+               err: check.err, at0: check.f0, sBest: check.sBest,
+               fBest: check.fBest, second: check.second,
+               filled, gaps: gapList(limitH || filled) };
+    }
     y = Math.max(0, y + check.shift);
   }
   if (absY < 0) { srcY = -Math.round(absY); bh -= srcY; y = 0; }
@@ -205,7 +290,7 @@ async function placeBand(dataUrl, absY, limitH, verify) {
   // asked for instead of assuming it did; `shift` says whether the scroll
   // position had to be overruled by the pixels
   return { rows: bh, y, w: bw, filled, shift: check.shift, err: check.err,
-           at0: check.at0, bad: !!check.bad, gaps: gapList(limitH || filled) };
+           at0: check.f0, bad: !!check.bad, gaps: gapList(limitH || filled) };
 }
 
 // merged coverage gaps inside [0, total)
@@ -428,8 +513,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
       if (msg.cmd === 'begin') { begin(msg.width, msg.height); sendResponse({ ok: true }); }
-      else if (msg.cmd === 'place') sendResponse(await placeBand(msg.dataUrl, msg.absY, msg.limitH, msg.verify));
+      else if (msg.cmd === 'place') sendResponse(await placeBand(msg.dataUrl, msg.absY, msg.limitH, msg.verify, msg.force));
       else if (msg.cmd === 'gaps') sendResponse({ gaps: gapList(msg.total || filled), filled });
+      else if (msg.cmd === 'qa') sendResponse(await qaCompare(msg.dataUrl, msg.absY));
+      else if (msg.cmd === 'same') sendResponse(await sameShot(msg.a, msg.b));
+      else if (msg.cmd === 'logurl') {
+        // Chrome ignores the filename for data: downloads, so the log becomes
+        // an anonymous download.txt - a blob URL keeps the proper name
+        const u = URL.createObjectURL(new Blob([msg.text || ''], { type: 'text/plain' }));
+        urls.push(u);
+        sendResponse({ url: u });
+      }
       else if (msg.cmd === 'finish') sendResponse(await finish(msg.fmt, msg.scale, msg.maxTrim, msg.base));
       else if (msg.cmd === 'cleanup') {
         // release the blobs a little later: the downloads still read them

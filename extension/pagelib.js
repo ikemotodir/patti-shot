@@ -226,6 +226,49 @@
     }));
   }
 
+  // ---- fixed elements that appear DURING the walk (split capture only) ----
+  // neutralizeFixed runs once, before the walk - but pages add floating
+  // buttons as you scroll (J-PlatPat pops a blue "入力窓開く+" into the top
+  // right corner once the search form leaves the screen). A late arrival like
+  // that gets photographed into every band at its viewport position. Making it
+  // static would shove it INTO the page flow and shift real content, so late
+  // arrivals are hidden instead: they never belonged to the page's content.
+  function hideNewFixed() {
+    const all = document.getElementsByTagName('*');
+    let n = 0;
+    for (let i = 0; i < all.length; i++) {
+      const el = all[i];
+      if (el.hasAttribute('data-patti-shot-touched') ||
+          el.hasAttribute('data-patti-shot-ui') ||
+          el.hasAttribute('data-patti-shot-hidden')) continue;
+      const cs = getComputedStyle(el);
+      if (cs.position !== 'fixed' && cs.position !== 'sticky') continue;
+      if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+      el.style.setProperty('visibility', 'hidden', 'important');
+      el.setAttribute('data-patti-shot-hidden', '1');
+      pushRestore(() => {
+        el.style.removeProperty('visibility');
+        el.removeAttribute('data-patti-shot-hidden');
+      });
+      n++;
+    }
+    return n;
+  }
+
+  // ---- pointer guard (split capture only) ----
+  // The mouse sits somewhere over the page while it scrolls underneath, so a
+  // different row is hovered in every band. A hover highlight then shows up as
+  // a band-vs-recheck pixel difference that has nothing to do with stitching.
+  function guardPointer() {
+    try {
+      const st = document.createElement('style');
+      st.setAttribute('data-patti-shot', '1');
+      st.textContent = '*{pointer-events:none !important;caret-color:transparent !important;}';
+      document.documentElement.appendChild(st);
+      pushRestore(() => { if (st.parentNode) st.parentNode.removeChild(st); });
+    } catch (e) {}
+  }
+
   // ---- our own injected UI: hide during capture ----
   function hideUI() {
     const els = document.querySelectorAll('[data-patti-shot-ui]');
@@ -323,7 +366,8 @@
   window.__PATTISHOT__ = {
     __v: 4,
     prepare, measure, neutralizeFixed, restoreAll, styleSignature,
-    keywordBoxes, findScroller, scrollTo, scrollY: currentScroll,
+    keywordBoxes, findScroller, scrollTo, scrollY: currentScroll, guardPointer,
+    hideNewFixed,
     _hideUI: hideUI, _state: S,
   };
 })();

@@ -27,10 +27,57 @@ WORK = os.path.join(os.environ["TEMP"], "patti_shot_order_test")
 
 CASES = [
     ("ruler", 300, lambda i: (20 + (i // 16), 20 + (i % 16) * 14, 90), 0.75),
-    ("ruler_table", 600, lambda i: (20 + (i // 25), 20 + (i % 25) * 9, 120), 0.006),
-    ("ruler_lategrow", 600, lambda i: (20 + (i // 25), 20 + (i % 25) * 9, 120), 0.006),
-    ("ruler_liar", 600, lambda i: (20 + (i // 25), 20 + (i % 25) * 9, 120), 0.006),
+    ("ruler_table", 600, lambda i: (20 + (i // 5), 20 + (i % 5) * 51, 120), 0.006),
+    ("ruler_lategrow", 600, lambda i: (20 + (i // 5), 20 + (i % 5) * 51, 120), 0.006),
+    # rows identical except a tiny barcode - the class of page that fooled the
+    # old verifier (colour_for=None -> decoded from the barcode instead). The
+    # _liar variant lies about scrollY by 546px = exactly 13 rows, so the
+    # misplaced band aligns border-for-border and only the small code differs:
+    # the worst case, and the one the real J-PlatPat capture hit.
+    ("ruler_hard", 600, None, None),
+    ("ruler_hard_liar", 600, None, None),
 ]
+
+
+def decode_barcode(img, bands):
+    """Row indices from the 12-module barcode in the first cell.
+
+    Modules are 4 css px (8 device px at 2x); module m is centred at device
+    x = 6 + 8m. Guards (m=0 and m=11) must be black; the 10 bits between are
+    the row index, MSB first. Rows that do not decode cleanly are skipped
+    (borders, padding), and consecutive equal values collapse to one entry.
+    """
+    seq, prev = [], None
+    H = img.shape[0]
+    for y in range(H):
+        row = img[y]
+
+        def grey(x):
+            p = row[x]
+            return 0.299 * int(p[0]) + 0.587 * int(p[1]) + 0.114 * int(p[2])
+
+        def module(m):
+            x = 6 + 8 * m
+            return (grey(x - 1) + grey(x) + grey(x + 1)) / 3
+
+        if module(0) > 80 or module(11) > 80:      # guards must be black
+            continue
+        val, ok = 0, True
+        for m in range(1, 11):
+            v = module(m)
+            if v < 80:
+                val = (val << 1) | 1
+            elif v > 175:
+                val = val << 1
+            else:
+                ok = False
+                break
+        if not ok or val >= bands:
+            continue
+        if val != prev:
+            seq.append(val)
+            prev = val
+    return seq
 
 
 def run_case(page, downloads, name, bands, colour_for, x_frac, imaging):
@@ -39,14 +86,22 @@ def run_case(page, downloads, name, bands, colour_for, x_frac, imaging):
             os.remove(f)
         except OSError:
             pass
-    page.goto(f"{page._base}/{name}.html", wait_until="domcontentloaded", timeout=90000)
+    for attempt in range(3):
+        try:
+            page.goto(f"{page._base}/{name}.html", wait_until="domcontentloaded", timeout=60000)
+            break
+        except Exception:
+            if attempt == 2:
+                raise
+            print("   goto失敗 -> リトライ", flush=True)
+            time.sleep(3)
     page.wait_for_selector("#patti-shot-fab", timeout=30000)
     page_h = page.evaluate("() => document.documentElement.scrollHeight")
     print(f"--- {name}: {page_h} CSS px / {bands}行 ---", flush=True)
 
     # A fault-injection fixture that is not actually injecting anything would
     # pass for the wrong reason, so prove the fault is live before judging.
-    if name == "ruler_liar":
+    if name.endswith("_liar"):
         lie = page.evaluate("""() => { window.scrollTo(0, 10000);
             return [window.scrollY, document.scrollingElement.scrollTop]; }""")
         page.evaluate("() => window.scrollTo(0, 0)")
@@ -75,7 +130,7 @@ def run_case(page, downloads, name, bands, colour_for, x_frac, imaging):
     forced = diag.get("degradedBands", 0)
     print(f"   帯={info.get('bands', '?')} 位置補正={diag.get('shifted', 0)}回", flush=True)
     for line in info.get("trace", []):
-        if "伸びた" in line or "途中" in line or "ずれ" in line:
+        if any(k in line for k in ("伸びた", "途中", "ずれ", "検算", "確定できず")):
             print("   " + line, flush=True)
 
     pngs = []
@@ -91,16 +146,19 @@ def run_case(page, downloads, name, bands, colour_for, x_frac, imaging):
         return False
 
     img = imaging.png_bytes_to_array(open(sorted(pngs)[0], "rb").read())
-    lookup = {colour_for(i): i for i in range(bands)}
-    x = max(0, min(img.shape[1] - 1, int(img.shape[1] * x_frac)))
-    seq, prev = [], None
-    for y in range(img.shape[0]):
-        idx = lookup.get(tuple(int(v) for v in img[y, x]))
-        if idx is None:
-            continue
-        if idx != prev:
-            seq.append(idx)
-            prev = idx
+    if colour_for is None:
+        seq = decode_barcode(img, bands)
+    else:
+        lookup = {colour_for(i): i for i in range(bands)}
+        x = max(0, min(img.shape[1] - 1, int(img.shape[1] * x_frac)))
+        seq, prev = [], None
+        for y in range(img.shape[0]):
+            idx = lookup.get(tuple(int(v) for v in img[y, x]))
+            if idx is None:
+                continue
+            if idx != prev:
+                seq.append(idx)
+                prev = idx
 
     counts = {}
     for v in seq:
@@ -151,7 +209,12 @@ def main():
         ctx = p.chromium.launch_persistent_context(
             profile, channel="msedge", headless=False, no_viewport=True,
             args=[f"--disable-extensions-except={EXT}", f"--load-extension={EXT}",
-                  "--no-first-run", "--no-default-browser-check"],
+                  "--no-first-run", "--no-default-browser-check"]
+                 # Playwright force-enables Chrome's NEW screenshot path; a
+                 # user's plain Chrome may run the legacy one. Set
+                 # PATTI_SHOT_LEGACY_SURFACE=1 to test what the user runs.
+                 + (["--disable-features=CDPScreenshotNewSurface"]
+                    if os.environ.get("PATTI_SHOT_LEGACY_SURFACE") else []),
             ignore_default_args=["--enable-automation", "--disable-extensions"])
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         page._base = base

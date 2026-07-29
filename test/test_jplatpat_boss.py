@@ -86,6 +86,9 @@ def main():
             PROFILE, channel="msedge", headless=False, no_viewport=True,
             args=[f"--disable-extensions-except={EXT}", f"--load-extension={EXT}",
                   "--no-first-run", "--no-default-browser-check",
+                  # the boss's plain Chrome may use the legacy screenshot path;
+                  # Playwright force-enables the new one, so opt out to match
+                  "--disable-features=CDPScreenshotNewSurface",
                   "--hide-crash-restore-bubble", "--window-size=1936,1040",
                   # this PC runs at 125% so a maximised window is only ~1532 CSS
                   # px wide; the boss's is 1920 at 100%. Forcing the ratio to 1
@@ -137,12 +140,19 @@ def main():
         t0 = time.time()
         page.click("#patti-shot-fab")
         toast = ""
-        for _ in range(420):
+        last_prog = ""
+        for i in range(900):                        # up to 30 minutes
             time.sleep(2)
             toast = page.evaluate("""() => { const t=document.getElementById('patti-shot-toast');
                  return t && t.style.display !== 'none' ? t.textContent : ''; }""")
             if toast:
                 break
+            if i % 15 == 14:                        # live heartbeat every 30s
+                prog = page.evaluate("""() => document.documentElement
+                    .getAttribute('data-patti-shot-progress') || ''""")
+                if prog != last_prog:
+                    print(f"    {time.time() - t0:.0f}s 進捗 {prog}", flush=True)
+                    last_prog = prog
         results["captured"] = "保存しました" in toast
         print(f"    {time.time() - t0:.0f}秒 / " + " | ".join(toast.split("\n")), flush=True)
 

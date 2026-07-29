@@ -198,8 +198,12 @@ def ruler_table() -> str:
            ".ic{color:#fff;background:#5b2d8e;border-radius:4px;padding:2px 6px;font-size:12px}")
     rows = []
     for i in range(n):
-        r = 20 + (i // 25)                     # unique (r,g) pair per row
-        g = 20 + (i % 25) * 9
+        # r = fine-grained id (decode), g = big visible step: adjacent rows
+        # must differ by MORE than the verifier's ink threshold, because the
+        # promise is "no VISIBLE row appears twice" - a difference no reader
+        # could see is not part of the contract.
+        r = 20 + (i // 5)
+        g = 20 + (i % 5) * 51
         rows.append(
             f"<tr><td class='ix' style='background:rgb({r},{g},120)'></td>"
             f"<td>09</td><td><span class='ic'>審</span></td><td>-</td>"
@@ -236,7 +240,7 @@ def ruler_lategrow() -> str:
       const end = Math.min(N, shown + BLOCK);
       let html = '';
       for (let i = shown; i < end; i++) {{
-        const r = 20 + Math.floor(i / 25), g = 20 + (i % 25) * 9;
+        const r = 20 + Math.floor(i / 5), g = 20 + (i % 5) * 51;
         html += "<tr><td class='ix' style='background:rgb(" + r + "," + g + ",120)'></td>" +
                 "<td>09</td><td><span class='ic'>審</span></td><td>-</td>" +
                 "<td>音楽を録音した記録媒体</td><td>musical sound recordings</td>" +
@@ -262,55 +266,67 @@ def ruler_lategrow() -> str:
             + "<script>" + js + "</script></body></html>")
 
 
-def ruler_liar() -> str:
-    """A page that reports the wrong scroll position.
+def _ruler_hard(lie: bool) -> str:
+    """Rows identical except a SMALL per-row mark - the case that fooled v5.4.0.
 
-    Chrome scrolls on the compositor, so the offset a screenshot was rendered at
-    and the offset the page reports are not always the same number. The boss's
-    capture showed whole bands landing 546 CSS px out, which drew content over
-    its neighbour and printed rows 167/168 twice - while the same code was clean
-    on this machine, because here the two never disagreed.
+    The colour-column fixtures give the verifier a huge per-row signal it does
+    not get on the real page: J-PlatPat's rows often differ only in the little
+    No. cell. v5.4.0's check (one sample every ~60px, averaged) was blind to
+    that, so a misplaced band passed "verification" and the numbers duplicated
+    with no warning - which is exactly what the boss reported.
 
-    Rather than wait for a fast machine to get unlucky, this page lies on
-    purpose: between 8,000 and 16,000 px it reports a scroll position 546 px too
-    small, exactly the observed error. Same colour-coded index as ruler_table,
-    so the saved image is still decoded and checked row by row.
+    Here every row is byte-identical except a 12-module barcode (guard bits at
+    both ends + 10 data bits = the row index) drawn like a small number. The
+    test decodes the barcode from the saved image, so order is still checked
+    exactly - but the verifier only has that small mark to work with.
     """
     n = 600
+    # Row pitch is pinned to exactly 42 css px, so the injected 546 px lie is
+    # 13 whole rows: the row BORDERS of the misplaced band line up perfectly
+    # with the neighbour's and the only visible difference is the little code.
+    # That alignment is the worst case - and the one the boss's page hit, which
+    # is why v5.4.0 saw "nothing wrong" while the numbers duplicated.
     css = ("body{margin:0;font:14px/1.4 sans-serif}"
            "table{border-collapse:collapse;width:100%}"
-           "td{border:1px solid #ccc;padding:12px 10px;height:24px}"
-           ".ix{width:26px;padding:0}"
+           "td{border:1px solid #ccc;padding:2px 10px;height:37px}"
+           ".bc{width:64px;padding:2px 0;font-size:0;line-height:0}"
+           ".bc span{display:inline-block;width:4px;height:30px;vertical-align:top}"
+           ".b1{background:#111}.b0{background:#fff}"
            ".ic{color:#fff;background:#5b2d8e;border-radius:4px;padding:2px 6px;font-size:12px}")
     rows = []
     for i in range(n):
-        r = 20 + (i // 25)
-        g = 20 + (i % 25) * 9
+        bits = format(i, "010b")
+        code = ("<span class='b1'></span>"
+                + "".join(f"<span class='b{b}'></span>" for b in bits)
+                + "<span class='b1'></span>")
         rows.append(
-            f"<tr><td class='ix' style='background:rgb({r},{g},120)'></td>"
+            f"<tr><td class='bc'>{code}</td>"
             f"<td>09</td><td><span class='ic'>審</span></td><td>-</td>"
             f"<td>音楽を録音した記録媒体</td><td>musical sound recordings</td>"
             f"<td>24E02</td></tr>")
-    js = """
-    Object.defineProperty(window, 'scrollY', {
-      configurable: true,
-      get() {
-        const y = document.scrollingElement.scrollTop;
-        return (y > 8000 && y < 16000) ? y - 546 : y;
-      },
-    });
-    window.__LIAR__ = true;
-    """
-    return (_HEAD.format(lang="ja", title="ruler_liar", css=css)
-            + "<table>" + "".join(rows) + "</table>"
-            + "<script>" + js + "</script></body></html>")
+    js = ""
+    if lie:
+        js = ("<script>Object.defineProperty(window,'scrollY',{configurable:true,"
+              "get(){const y=document.scrollingElement.scrollTop;"
+              "return (y>8000&&y<16000)?y-546:y;}});</script>")
+    return (_HEAD.format(lang="ja", title="ruler_hard", css=css)
+            + "<table>" + "".join(rows) + "</table>" + js + "</body></html>")
+
+
+def ruler_hard() -> str:
+    return _ruler_hard(False)
+
+
+def ruler_hard_liar() -> str:
+    return _ruler_hard(True)
 
 
 FIXTURES = {
     "ruler": ruler,
     "ruler_table": ruler_table,
     "ruler_lategrow": ruler_lategrow,
-    "ruler_liar": ruler_liar,
+    "ruler_hard": ruler_hard,
+    "ruler_hard_liar": ruler_hard_liar,
     "short": short, "long": long_page, "lazy": lazy, "fixedheader": fixed_header,
     "innerscroll": inner_scroll, "infinite": infinite, "wide": wide,
     "japanese": japanese, "tables": tables, "iframe": iframe, "dark": dark,

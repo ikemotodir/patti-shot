@@ -90,7 +90,11 @@ async function captureTab(tab, settings) {
   const tabId = tab.id;
   const scale = Math.max(1, Math.min(3, parseInt(settings.scale, 10) || 2));
   const fmt = settings.fmt || 'both';
-  const trace = [];
+  const t0 = Date.now();
+  const rawTrace = [];
+  // every entry carries elapsed seconds, so a slow capture shows WHERE the
+  // time went instead of just that it was slow
+  const trace = { push: (line) => rawTrace.push(((Date.now() - t0) / 1000).toFixed(0) + 's ' + line) };
 
   await injectPageLib(tabId);
   await runInPage(tabId, () => window.__PATTISHOT__.prepare());
@@ -140,13 +144,14 @@ async function captureTab(tab, settings) {
       window.__PATTISHOT__.restoreAll();
     });
   }
-  const { cssH, finalCssH, contentH, split, bands, degradedBands, shifted, suspect } = r;
+  const { cssH, finalCssH, contentH, split, bands, degradedBands, shifted, suspect, qaChecked, qaFail } = r;
 
   // finish: trailing trim + blank check + encode + save
+  const base = basename(tab.url);
   const maxTrim = Math.max(0, Math.round((finalCssH - contentH) * scale) + 4 * scale);
   const out = await askOffscreen({
     cmd: 'finish', fmt, scale, maxTrim,
-    base: basename(tab.url), contentHeight: contentH,
+    base, contentHeight: contentH,
   });
 
   const files = [];
@@ -168,7 +173,15 @@ async function captureTab(tab, settings) {
   if (truncated) trace.push(`※途中までしか撮れていない: ${savedCssH} / ${contentH} css px`);
 
   const notes = [];
-  if (suspect) {
+  if (qaChecked) {
+    if (qaFail === 0 && !suspect) {
+      notes.push(`検算OK: 継ぎ目${qaChecked}箇所を撮り直して照合し、すべて一致しました`);
+    } else {
+      notes.push(`※検算で${qaFail || suspect}箇所を確定できませんでした。` +
+                 `一緒に保存された ログ(_log.txt) を添えてご連絡ください`);
+    }
+  }
+  if (suspect && !qaChecked) {
     notes.push(`※${suspect}箇所で貼り合わせ位置を確定できませんでした。` +
                `画像を一度ご確認ください`);
   }
@@ -181,10 +194,29 @@ async function captureTab(tab, settings) {
   } else if (out.pngScale && out.pngScale < scale) {
     notes.push(`※とても長いページのため、PNGは1枚に収まるよう${out.pngScale}倍で保存しました（PDFは${scale}倍のままです）`);
   }
+  const diag = { cssW, cssH, finalCssH, contentH, scale, degradedBands, shifted, suspect,
+                 qaChecked, qaFail, savedCssH, outW: out.width, outH: out.height,
+                 trimmed: out.trimmed };
+
+  // A tiny log goes with every capture. When something looks wrong on a
+  // machine we cannot see, this file says which build ran and what each band
+  // did - one attachment instead of another round of guessing.
+  try {
+    const logText = ['PATTI SHOT v' + chrome.runtime.getManifest().version,
+                     'url: ' + tab.url,
+                     'diag: ' + JSON.stringify(diag), ''].concat(rawTrace).join('\r\n');
+    // a data: URL loses its filename (saved as download.txt), a blob keeps it
+    const lu = await askOffscreen({ cmd: 'logurl', text: logText });
+    await new Promise((resolve) => {
+      chrome.downloads.download({
+        url: lu.url, filename: base + '_log.txt', saveAs: false,
+      }, () => { void chrome.runtime.lastError; resolve(); });
+    });
+  } catch (e) {}
+
   return {
-    ok: true, files, bands, split, blankRuns: out.blankRuns, trace, truncated,
-    diag: { cssW, cssH, finalCssH, contentH, scale, degradedBands, shifted, suspect, savedCssH,
-            outW: out.width, outH: out.height, trimmed: out.trimmed },
+    ok: true, files, bands, split, blankRuns: out.blankRuns, trace: rawTrace, truncated,
+    diag,
     note: notes.join('\n'),
   };
 }
@@ -199,6 +231,7 @@ async function captureOnce(tabId, cssW, scale, trace, attempt) {
   let degradedBands = 0;
   let shifted = 0;
   let suspect = 0;
+  let qaChecked = 0, qaFail = 0;
   let finalCssH = cssH;              // may change under an emulated viewport
   let contentH = m.contentHeight;
   trace.push(`--- ${attempt}回目: ${cssW}x${cssH} css px / ${scale}倍 / ` +
@@ -237,6 +270,7 @@ async function captureOnce(tabId, cssW, scale, trace, attempt) {
   // set the device scale, then screenshot each scrolled viewport (no clip,
   // so we never hit the high-offset raster limit).
   await runInPage(tabId, () => window.__PATTISHOT__.neutralizeFixed());
+  await runInPage(tabId, () => window.__PATTISHOT__.guardPointer());
   // Emulate a taller viewport so a long page needs far fewer round-trips
   // (48,000 px page: ~54 captures at 900 px -> ~14 at 3,600 px). Kept well
   // under the raster limit: 3,600 x 3 = 10,800 < 16,384.
@@ -274,10 +308,16 @@ async function captureOnce(tabId, cssW, scale, trace, attempt) {
         let last = -1, same = 0, n = 0;
         const tick = () => {
           const cy = P.scrollY();
-          if (Math.abs(cy - last) < 0.5) { if (++same >= 2) return res(cy); }
-          else same = 0;
+          if (Math.abs(cy - last) < 0.5) {
+            if (++same >= 2) {
+              // floating buttons the page adds mid-scroll would photograph
+              // into this band at their viewport position - hide them first
+              P.hideNewFixed();
+              return res(cy);
+            }
+          } else same = 0;
           last = cy;
-          if (++n > 90) return res(cy);            // hard cap ~1.5s
+          if (++n > 90) { P.hideNewFixed(); return res(cy); }   // cap ~1.5s
           requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
@@ -290,23 +330,43 @@ async function captureOnce(tabId, cssW, scale, trace, attempt) {
     // out, which drew content on top of its neighbour and made the same rows
     // appear twice. So every band is checked against what is already assembled,
     // and a band that does not line up is simply re-taken.
-    const shootAt = async (yCss, verify) => {
-      await settleScroll(yCss);
+    // A single screenshot is not evidence: depending on the machine and the
+    // screenshot path, Chrome can hand back a frame from a moment ago. Two
+    // captures in a row that are pixel-identical ARE evidence - a changing
+    // surface cannot produce the same picture twice.
+    const stableShot = async () => {
       const before = await runInPage(tabId, () => window.__PATTISHOT__.scrollY());
-      const shot = await sendCmd(tabId, 'Page.captureScreenshot',
+      const s1 = await sendCmd(tabId, 'Page.captureScreenshot',
+        { format: 'png', captureBeyondViewport: false, fromSurface: true });
+      const s2 = await sendCmd(tabId, 'Page.captureScreenshot',
         { format: 'png', captureBeyondViewport: false, fromSurface: true });
       const after = await runInPage(tabId, () => window.__PATTISHOT__.scrollY());
       if (Math.abs(after - before) > 0.5) return null;   // moved mid-shot
+      const eq = await askOffscreen({
+        cmd: 'same', a: 'data:image/png;base64,' + s1.data,
+        b: 'data:image/png;base64,' + s2.data,
+      });
+      if (!eq.same) return null;                         // surface still moving
+      return { data: s2.data, before };
+    };
+
+    const shootAt = async (yCss, verify, force) => {
+      await settleScroll(yCss);
+      const shot = await stableShot();
+      if (!shot) return null;
+      const before = shot.before;
       const res = await askOffscreen({
         cmd: 'place', dataUrl: 'data:image/png;base64,' + shot.data,
         absY: Math.round(before * scale), limitH: totalDev,
-        verify: verify !== false,
+        verify: verify !== false, force: force === true,
       });
       trace.push(`y=${Math.round(yCss)} act=${Math.round(before)} ` +
-                 `-> @${res.y} ${res.w}x${res.rows} filled=${res.filled}` +
-                 (res.shift ? ` ★ずれ${res.shift}を補正 (err ${(res.err || 0).toFixed(1)}` +
-                              ` vs ${(res.at0 || 0).toFixed(1)})` : '') +
-                 (res.bad ? ` ★位置が合わない (err ${(res.at0 || 0).toFixed(1)})` : ''));
+                 (res.rejected ? `-> 不採用` : `-> @${res.y} ${res.w}x${res.rows} filled=${res.filled}`) +
+                 (res.shift ? ` ★ずれ${res.shift}を補正 (差${((res.err || 0) * 100).toFixed(2)}%` +
+                              ` / 元${((res.at0 || 0) * 100).toFixed(2)}%)` : '') +
+                 (res.bad ? ` ★位置を確定できず (元${((res.at0 || 0) * 100).toFixed(2)}%` +
+                            ` 最良@${res.sBest}=${((res.fBest || 0) * 100).toFixed(2)}%` +
+                            ` 次点${((res.second || 0) * 100).toFixed(2)}%)` : ''));
       if (res.shift) shifted++;
       bands++;
       return res;
@@ -316,17 +376,16 @@ async function captureOnce(tabId, cssW, scale, trace, attempt) {
     // again - a compositor that was momentarily behind will have caught up. A
     // band whose position the pixels corrected is already right, so it is kept.
     const shootChecked = async (yCss) => {
-      let last = null;
-      for (let t = 0; t < 4; t++) {
+      for (let t = 0; t < 3; t++) {
         const res = await shootAt(yCss);
-        if (res) {
-          last = res;
-          if (!res.bad) return res;          // agreed, or corrected on evidence
-        }
+        if (res && !res.bad) return res;     // agreed, or corrected on evidence
         await new Promise((r) => setTimeout(r, 200 + t * 200));
       }
-      if (last && last.bad) suspect++;       // never resolved: say so at the end
-      return last;
+      // retakes exhausted: take it once more and place it AS CLAIMED. A hole
+      // is worse than an imperfect band, and the QA pass re-inspects anyway.
+      const res = await shootAt(yCss, true, true);
+      if (res && res.bad) suspect++;         // never resolved: say so at the end
+      return res;
     };
 
     // walk down, then keep walking for as long as the page gets taller
@@ -361,6 +420,50 @@ async function captureOnce(tabId, cssW, scale, trace, attempt) {
         await shootChecked(Math.max(0, s / scale - 8));
       }
     }
+    // ---- self-check: read our own output before claiming success ----------
+    // Every seam is re-photographed FRESH and compared against the assembled
+    // image. A mismatch is repaired by re-taking the bands around it and then
+    // checked again. Whatever cannot be made to match is reported out loud in
+    // the toast - the one thing this tool must never do is hand over a broken
+    // image with a cheerful "saved".
+    let spots = [];
+    for (let sy = stepCss; sy < finalCssH - vp * 0.4; sy += stepCss) {
+      spots.push(Math.max(0, Math.round(sy - vp * 0.3)));
+    }
+    if (spots.length > 16) {
+      const k = Math.ceil(spots.length / 16);
+      spots = spots.filter((_, i) => i % k === 0);
+    }
+    qaChecked = spots.length;
+    for (let round = 0; round < 3 && qaChecked; round++) {
+      qaFail = 0;
+      for (const p of spots) {
+        progress(tabId, bands, estimate);
+        // judge on TWO independent shots: a single sample can itself be the
+        // stale frame it is hunting, and that must not condemn a good image
+        let q = null, before = 0;
+        for (let t = 0; t < 2; t++) {
+          await settleScroll(p);
+          const shot = await stableShot();
+          if (!shot) continue;
+          before = shot.before;
+          q = await askOffscreen({ cmd: 'qa',
+            dataUrl: 'data:image/png;base64,' + shot.data,
+            absY: Math.round(before * scale) });
+          if (q.ok || q.skipped) break;
+          await new Promise((r) => setTimeout(r, 250));
+        }
+        if (!q) { qaFail++; continue; }
+        if (q.skipped || q.ok) continue;
+        qaFail++;
+        trace.push(`検算NG y=${Math.round(before)} 差${(q.frac * 100).toFixed(1)}% -> 貼り直し`);
+        await shootChecked(Math.max(0, before - Math.round(vp * 0.5)));
+        await shootChecked(Math.min(finalCssH - 100, before + Math.round(vp * 0.5)));
+      }
+      if (!qaFail) break;
+    }
+    trace.push(`検算 ${qaChecked - qaFail}/${qaChecked}箇所一致`);
+
     const g2 = await askOffscreen({ cmd: 'gaps', total: totalDev });
     degradedBands = (g2.gaps || []).length;         // 0 = fully covered
     trace.push(`${bands}枚 / 位置を補正した帯 ${shifted} / 合わないままの帯 ${suspect} / 未撮影の残り ${degradedBands}箇所`);
@@ -368,7 +471,7 @@ async function captureOnce(tabId, cssW, scale, trace, attempt) {
     await sendCmd(tabId, 'Emulation.clearDeviceMetricsOverride').catch(() => {});
     await runInPage(tabId, () => window.__PATTISHOT__.scrollTo(0));
   }
-  return { cssH, finalCssH, contentH, split, bands, degradedBands, shifted, suspect };
+  return { cssH, finalCssH, contentH, split, bands, degradedBands, shifted, suspect, qaChecked, qaFail };
 }
 
 function basename(url) {
