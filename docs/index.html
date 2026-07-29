@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PATTI SHOT ── Webページを丸ごと1枚に撮るスクリーンショット（無料・Windows）</title>
+<title>PATTI SHOT ── Webページを丸ごと1枚に撮るスクリーンショット（無料・Chrome拡張／Windowsアプリ）</title>
 <meta name="description" content="スクロールしないと見えない一番下まで、Webページを丸ごと1枚のPNG/PDFに保存する無料ツール。会議資料の保存や、WebページをまるごとAIに読ませたい時にも。データはあなたのPCの中だけ。">
 <meta name="theme-color" content="#1a1a24">
 
 <!-- SNSシェア時のプレビュー（OGP / Twitterカード） -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="PATTI CREATIVE PRODUCT">
-<meta property="og:title" content="PATTI SHOT ── Webページを丸ごと1枚に撮るスクリーンショット（無料・Windows）">
+<meta property="og:title" content="PATTI SHOT ── Webページを丸ごと1枚に撮るスクリーンショット（無料・Chrome拡張／Windowsアプリ）">
 <meta property="og:description" content="スクロールしないと見えない一番下まで、Webページを丸ごと1枚のPNG/PDFに。無料・登録不要・完全ローカル保存。">
 <meta property="og:url" content="https://ikemotodir.github.io/patti-shot/">
 <meta property="og:image" content="https://ikemotodir.github.io/patti-shot/assets/patti_shot_logo.png">
@@ -240,7 +240,7 @@
        href="https://github.com/ikemotodir/patti-shot/releases/download/v4.2.3/PATTI_SHOT.exe"
        onclick="gtag('event','download',{app:'patti-shot'})">アプリ版(exe)はこちら（<span id="ver-exe">v4.2.3</span>）</a>
   </p>
-  <p class="sub">無料・登録不要・Windows 10/11用 ／ <a href="https://github.com/ikemotodir/patti-shot">ソースコードを見る（GitHub）</a></p>
+  <p class="sub">無料・登録不要 ／ 拡張版: Windows / Mac / Linux・アプリ版(exe): Windows 10/11 ／ <a href="https://github.com/ikemotodir/patti-shot">ソースコードを見る（GitHub）</a></p>
   <a class="home-link" href="https://ikemotodir.github.io/">← PATTIツールの棚にもどる</a>
 </header>
 
@@ -296,8 +296,8 @@
       </div>
       <div class="card">
         <div class="emoji">🔑</div>
-        <h3>ログインしたままのページもOK</h3>
-        <p>専用ブラウザで普通にログインして使えます。ログイン状態は次回起動時も保持されるので、会員ページや管理画面の記録にも。</p>
+        <h3>ログイン中のページもOK</h3>
+        <p>Chrome拡張版なら、いま見ているログイン中のページをそのまま撮影。会員ページや管理画面の記録にも。アプリ版(exe)も初回にログインすれば次回から保持されます。</p>
       </div>
       <div class="card">
         <div class="emoji">🖱️</div>
@@ -326,7 +326,7 @@
   <section>
     <h2>⚡ いま見ているページを<span class="accent">そのまま開く</span></h2>
     <p class="update-note">
-      「撮りたいページのURLをコピペし直すのが面倒」を解消する方法が2つあります。
+      <b>アプリ版(exe)向け。</b>「撮りたいページのURLをコピペし直すのが面倒」を解消する方法が2つあります。
     </p>
     <ol class="steps">
       <li><b>1クリック連携（おすすめ・初回だけ設定）</b><br>
@@ -348,8 +348,8 @@
   <section>
     <h2>🛡 セキュリティソフトの<span class="accent">警告について</span></h2>
     <div class="local-box" style="text-align:left">
-      PATTI SHOT は署名のない個人開発アプリのため、初回起動時に Windows（SmartScreen）や
-      セキュリティソフト（Avast など）が警告を出すことがあります。<br>
+      PATTI SHOT の<strong>アプリ版(exe)</strong>は署名のない個人開発アプリのため、初回起動時に Windows（SmartScreen）や
+      セキュリティソフト（Avast など）が警告を出すことがあります（Chromeが管理する<strong>拡張版では出ません</strong>）。<br>
       これは<strong>「作者不明の新しいアプリ」に対する一般的な反応</strong>で、ウイルスが検出されたわけではありません。<br><br>
       安心材料として、事実を全部書いておきます：<br>
       ・撮影した画像・PDFを外部に送信することは一切ありません。処理はすべてあなたのPCの中で完結します<br>
@@ -388,24 +388,19 @@
   <section>
     <h2>🔃 アップデート</h2>
     <p class="update-note">
-      <b>アプリ版(exe)</b>: 起動すると自動で新しいバージョンを確認し、
-      新しい版があると画面右下のお知らせから<b>「更新する」を押すだけ</b>。
+      <b>Chrome拡張版</b>: 新しい版が出るとアイコンの画面でお知らせ。zipをダウンロードして
+      フォルダの中身を入れ替え →「更新」ボタンで完了です（Chromeの仕様で、ストア外の拡張機能は自動更新できません）。<br>
+      <b>アプリ版(exe)</b>: 起動時に自動チェック。「更新する」を押すだけで、
       ダウンロード → 置き換え → 再起動まで全自動です。
-      デスクトップのショートカットからの起動も、更新後は自動で最新版が開きます。<br><br>
-      <b>Chrome拡張版</b>: アイコンを押した画面に「新しい版があります」と出たら、
-      zipをダウンロードしてフォルダの中身を入れ替え →「更新」ボタン。
-      詳しくは上の「Chrome拡張版の入れ方と更新」をどうぞ。
     </p>
   </section>
 
-  <!-- スポンサー枠
-       流用元: PATTI CREATIVE PRODUCT トップページの #sponsor-box(文言・構造同一仕様)。
-       棚側(patti-creative-product)の仕様変更時はここも追従させること -->
+  <!-- スポンサー枠 流用元: PATTI CREATIVE PRODUCT トップ(#sponsor-box)。棚側の仕様変更時に追従 -->
   <section>
-    <h2>📣 <span class="accent">SPONSOR</span></h2>
+    <h2>📣 <span class="accent">SPONSOR</span> 📣</h2>
     <div class="sponsor-box">
-      <h3>この枠に、あなたの広告を。</h3>
-      <p>PATTI CREATIVE PRODUCT は、クリエイターが集まる無料ツールの棚です。広告は自社で直接ご相談を受け付けています。仲介システムなし、話が早いのが自慢です。</p>
+      <h3>法人から個人まで、誰でもスポンサーに</h3>
+      <p>PATTI CREATIVE PRODUCT は、クリエイターが多く集まるサイトです。広告のご相談は直接どうぞ。仲介なし、話が早いのが自慢です。</p>
       <a class="btn" href="https://ikemotodir.github.io/contact.html"
          onclick="gtag('event','sponsor_contact_click',{from:'patti-shot'})">広告掲載の相談をする</a>
     </div>
@@ -419,25 +414,25 @@
       <p>されません。撮影と保存はすべてあなたのPCの中で完結します。通信が発生するのは「起動時の更新チェック（GitHubに最新版を確認）」と「Webページを見るための普通のブラウザ通信」だけです。</p></details>
 
     <details><summary>動作環境は？</summary>
-      <p>Windows 10 / 11 です。ブラウザは、PCにインストール済みの Google Chrome を使います（Chrome推奨）。Chromeが無い場合は、初回だけ専用ブラウザを自動で取得します（操作は不要です）。</p></details>
+      <p>Chrome拡張版は、Chromeが動く環境（Windows / Mac / Linux）で使えます。アプリ版(exe)は Windows 10 / 11 専用です。</p></details>
 
     <details><summary>「WindowsによってPCが保護されました」と出て起動できない</summary>
       <p>「詳細情報」→「実行」の順にクリックしてください。署名のない個人開発アプリで必ず出る表示で、異常ではありません。</p></details>
 
     <details><summary>ウイルス対策ソフトが警告を出すことがある？</summary>
-      <p>ごくまれに誤検知されることがあります（このアプリの作り方＝PyInstaller製のexeで起こり得る既知の現象です）。ソースコードは全部GitHubで公開しているので、中身は誰でも確認できます。</p></details>
+      <p>アプリ版(exe)で、ごくまれに誤検知されることがあります（PyInstaller製のexeで起こり得る既知の現象です）。Chrome拡張版では出ません。ソースコードは全部GitHubで公開しているので、中身は誰でも確認できます。</p></details>
 
     <details><summary>ログインが必要なページも撮れる？</summary>
-      <p>撮れます。開いた専用ブラウザで普通にログインすれば、見えている画面がそのまま撮影されます。ログイン状態は次回起動時も保持されます。</p></details>
+      <p>撮れます。Chrome拡張版はいつものChromeで動くので、ログイン中のページをそのまま撮影できます。アプリ版(exe)は専用ブラウザで初回だけログインすれば、次回以降も保持されます。</p></details>
 
     <details><summary>どのくらい長いページまで撮れる？</summary>
-      <p>数万ピクセル級の非常に長いページまで対応しています。あまりに長いページでは、PDFは規格の上限に合わせて自動で複数ページに分かれます（文字の行が切れない位置で分割されます）。</p></details>
+      <p>数万ピクセル級の長いページにも対応しています。あまりに長いページでは、PDFは規格の上限に合わせて自動で複数ページに分かれます（文字の行が切れない位置で分割されます）。なお特に長いページでは、環境によって貼り合わせが乱れることがあります。撮影後にツール自身が画素で検算し、確定できない場合は保存時の通知とログ（<code>_log.txt</code>）でお知らせします。</p></details>
 
     <details><summary>撮影に失敗したら？</summary>
       <p>空白などの失敗を自動で検出して、条件を変えて自動でリトライします。それでも失敗した場合だけ、画面に日本語で理由が表示されます。</p></details>
 
     <details><summary>Macで使える？</summary>
-      <p>現在はWindows専用（Windows 10 / 11）です。</p></details>
+      <p>Chrome拡張版なら使えます（Chromeが動けばOK）。アプリ版(exe)は Windows 10 / 11 専用です。</p></details>
 
     <details><summary>商用利用できる？</summary>
       <p>できます。ただし、撮影したページの内容の権利は各サイトにあります。社内記録・資料などの範囲でご利用ください。</p></details>
@@ -459,7 +454,7 @@
 
 <footer>
   <p>📸 PATTI SHOT ── Chrome拡張版 <span id="fver-ext">v5.5.1</span> ／ アプリ版 <span id="fver-exe">v4.2.3</span></p>
-  <p>© 2026 STUDIO PATTI LLC ── 合同会社スタジオパッチ（愛知県一宮市）</p>
+  <p>© 2026 STUDIO PATTI LLC｜合同会社スタジオパッチ</p>
   <p><a href="https://ikemotodir.github.io/" style="color:var(--yellow)">← PATTI CREATIVE PRODUCT トップへ</a></p>
 </footer>
 
